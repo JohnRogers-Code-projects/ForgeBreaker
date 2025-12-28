@@ -273,15 +273,11 @@ class TestExplanationsReferenceStressedAssumptions:
         result = apply_stress(sample_aggro_deck, mock_card_db, scenario)
 
         for affected in result.affected_assumptions:
-            assert (
-                affected.change_explanation
-            ), f"Affected assumption {affected.name} should explain what changed"
-            assert (
-                affected.original_value is not None
-            ), "Should show original value"
-            assert (
-                affected.stressed_value is not None
-            ), "Should show stressed value"
+            assert affected.change_explanation, (
+                f"Affected assumption {affected.name} should explain what changed"
+            )
+            assert affected.original_value is not None, "Should show original value"
+            assert affected.stressed_value is not None, "Should show stressed value"
 
     def test_breaking_point_has_comprehensive_explanation(
         self, sample_aggro_deck: MetaDeck, mock_card_db: dict
@@ -315,14 +311,24 @@ class TestUncertaintyLanguagePresent:
         # Includes words that indicate this is a scenario/estimate, not a guarantee
         explanation_lower = result.explanation.lower()
         uncertainty_words = [
-            "may", "might", "could", "if", "under", "when", "assume",
-            "shows", "appears", "suggests", "scenario", "testing", "stress"
+            "may",
+            "might",
+            "could",
+            "if",
+            "under",
+            "when",
+            "assume",
+            "shows",
+            "appears",
+            "suggests",
+            "scenario",
+            "testing",
+            "stress",
         ]
 
         has_uncertainty = any(word in explanation_lower for word in uncertainty_words)
         assert has_uncertainty, (
-            f"Explanation should include uncertainty language. "
-            f"Got: '{result.explanation}'"
+            f"Explanation should include uncertainty language. Got: '{result.explanation}'"
         )
 
     def test_recommendations_use_suggestive_language(
@@ -352,8 +358,7 @@ class TestUncertaintyLanguagePresent:
                 ]
                 has_suggestive = any(word in rec_lower for word in suggestive_words)
                 assert has_suggestive, (
-                    f"Recommendation should be suggestive, not directive. "
-                    f"Got: '{rec}'"
+                    f"Recommendation should be suggestive, not directive. Got: '{rec}'"
                 )
 
 

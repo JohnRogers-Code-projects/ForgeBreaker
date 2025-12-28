@@ -8,6 +8,7 @@ ForgeBreaker explains, it does not advise.
 """
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -33,9 +34,7 @@ class OutcomeExplanation:
         """Generate full explanation text."""
         parts = [self.summary]
         if self.assumptions_involved:
-            parts.append(
-                f"This interpretation depends on: {', '.join(self.assumptions_involved)}."
-            )
+            parts.append(f"This interpretation depends on: {', '.join(self.assumptions_involved)}.")
         if self.conditional:
             parts.append(self.conditional)
         return " ".join(parts)
@@ -50,11 +49,11 @@ class ExplainedResult:
     implying that the result is authoritative or prescriptive.
     """
 
-    value: float | int | str | list | dict
+    value: float | int | str | list[Any] | dict[str, Any]
     explanation: OutcomeExplanation
     label: str = ""  # Human-readable label for the value
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             "value": self.value,
@@ -99,8 +98,7 @@ def create_completion_explanation(
     else:
         summary = f"Your collection is missing {missing_cards} cards for this deck."
         conditional = (
-            "This count reflects exact matches. "
-            "Functional alternatives are not considered."
+            "This count reflects exact matches. Functional alternatives are not considered."
         )
 
     assumptions = []
@@ -164,8 +162,7 @@ def create_fragility_explanation(
     # Describe what fragility represents, not what to do about it
     if fragility < 0.2:
         summary = (
-            f"This {archetype} deck's characteristics are within typical ranges "
-            f"for its archetype."
+            f"This {archetype} deck's characteristics are within typical ranges for its archetype."
         )
     elif fragility < 0.5:
         summary = (

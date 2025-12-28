@@ -15,6 +15,9 @@ from forgebreaker.services.deck_improver import (
     format_deck_analysis,
 )
 
+# Default format for testing - all cards in test db are assumed legal
+DEFAULT_FORMAT = "standard"
+
 
 @pytest.fixture
 def card_db() -> dict[str, dict[str, Any]]:
@@ -141,6 +144,12 @@ def card_db() -> dict[str, dict[str, Any]]:
 
 
 @pytest.fixture
+def format_legal_cards(card_db: dict[str, dict[str, Any]]) -> set[str]:
+    """All cards in the test db are assumed to be format-legal."""
+    return set(card_db.keys())
+
+
+@pytest.fixture
 def goblin_deck_text() -> str:
     """Goblin tribal deck list."""
     return """Deck
@@ -243,6 +252,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Correctly parses and analyzes a deck."""
         collection = Collection(cards={"Goblin Chieftain": 4})
@@ -251,6 +261,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert analysis.total_cards == 32
@@ -260,6 +272,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Correctly detects deck colors."""
         collection = Collection()
@@ -268,6 +281,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert "R" in analysis.colors
@@ -276,6 +291,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Correctly counts creatures, spells, and lands."""
         collection = Collection()
@@ -284,6 +300,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert analysis.creature_count == 8  # 4 Guide + 4 Raging
@@ -294,6 +312,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Detects goblin tribal deck."""
         collection = Collection()
@@ -302,6 +321,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert analysis.primary_tribe == "goblin"
@@ -310,6 +331,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Suggests goblin cards for tribal deck."""
         # User owns Goblin Chieftain which fits tribal theme
@@ -319,6 +341,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         # Should at least detect tribal theme
@@ -328,6 +352,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         sacrifice_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Detects sacrifice theme in deck."""
         collection = Collection()
@@ -336,6 +361,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=sacrifice_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert "sacrifice" in analysis.detected_themes
@@ -344,6 +371,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Does not suggest cards outside deck's color identity."""
         # Woe Strider is black, goblin deck is red
@@ -353,6 +381,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         # Should not suggest black card for mono-red deck
@@ -362,6 +392,7 @@ class TestAnalyzeAndImproveDeck:
     def test_warns_low_card_count(
         self,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Warns when deck has fewer than 60 cards."""
         deck_text = """Deck
@@ -374,6 +405,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert any("14 cards" in w for w in analysis.warnings)
@@ -381,6 +414,7 @@ class TestAnalyzeAndImproveDeck:
     def test_warns_low_land_count(
         self,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Warns when deck has too few lands."""
         deck_text = """Deck
@@ -393,6 +427,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert any("land" in w.lower() for w in analysis.warnings)
@@ -400,6 +436,7 @@ class TestAnalyzeAndImproveDeck:
     def test_handles_empty_deck(
         self,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Handles empty deck input gracefully."""
         collection = Collection()
@@ -408,6 +445,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text="",
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         assert analysis.total_cards == 0
@@ -417,6 +456,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Respects max_suggestions parameter."""
         collection = Collection(
@@ -431,6 +471,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
             max_suggestions=1,
         )
 
@@ -440,6 +482,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Includes card details with oracle text for non-land cards."""
         collection = Collection()
@@ -448,6 +491,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         # Should have card details for non-basic-land cards
@@ -466,6 +511,7 @@ class TestAnalyzeAndImproveDeck:
         self,
         goblin_deck_text: str,
         card_db: dict[str, dict[str, Any]],
+        format_legal_cards: set[str],
     ) -> None:
         """Suggestions include oracle text for both cards."""
         collection = Collection(cards={"Goblin Chieftain": 4})
@@ -474,6 +520,8 @@ class TestAnalyzeAndImproveDeck:
             deck_text=goblin_deck_text,
             collection=collection,
             card_db=card_db,
+            format_name=DEFAULT_FORMAT,
+            format_legal_cards=format_legal_cards,
         )
 
         if analysis.suggestions:
