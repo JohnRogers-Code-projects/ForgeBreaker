@@ -1,8 +1,10 @@
 """
 Explanation models for transparent outcomes.
 
-Every result in ForgeBreaker should be accompanied by an explanation
-that references the assumptions involved and includes uncertainty language.
+Explanations describe consequences tied to player beliefs, not prescriptions.
+They help players understand what happened and why, not what to do next.
+
+ForgeBreaker explains, it does not advise.
 """
 
 from dataclasses import dataclass, field
@@ -13,27 +15,29 @@ class OutcomeExplanation:
     """
     Explanation for a single outcome or metric.
 
+    Explanations are conditional interpretations tied to player beliefs.
+    They describe what something means given certain assumptions,
+    not what the player should do about it.
+
     Attributes:
-        summary: Brief explanation of what the metric means
-        assumptions_involved: List of assumption names this metric relies on
-        uncertainty: Statement about what could change this outcome
-        confidence: How confident we are in this explanation (low/medium/high)
+        summary: What this metric represents given current assumptions
+        assumptions_involved: Which beliefs this interpretation depends on
+        conditional: What would change this interpretation
     """
 
     summary: str
     assumptions_involved: list[str] = field(default_factory=list)
-    uncertainty: str = ""
-    confidence: str = "medium"
+    conditional: str = ""  # Renamed from 'uncertainty' - what changes the interpretation
 
     def full_text(self) -> str:
         """Generate full explanation text."""
         parts = [self.summary]
         if self.assumptions_involved:
             parts.append(
-                f"This depends on: {', '.join(self.assumptions_involved)}."
+                f"This interpretation depends on: {', '.join(self.assumptions_involved)}."
             )
-        if self.uncertainty:
-            parts.append(self.uncertainty)
+        if self.conditional:
+            parts.append(self.conditional)
         return " ".join(parts)
 
 
@@ -42,8 +46,8 @@ class ExplainedResult:
     """
     A result with an attached explanation.
 
-    Wraps any result value with an explanation that makes
-    the reasoning transparent.
+    The explanation makes the reasoning transparent without
+    implying that the result is authoritative or prescriptive.
     """
 
     value: float | int | str | list | dict
@@ -58,22 +62,22 @@ class ExplainedResult:
             "explanation": {
                 "summary": self.explanation.summary,
                 "assumptions_involved": self.explanation.assumptions_involved,
-                "uncertainty": self.explanation.uncertainty,
-                "confidence": self.explanation.confidence,
+                "conditional": self.explanation.conditional,
                 "full_text": self.explanation.full_text(),
             },
         }
 
 
-# Standard uncertainty phrases for consistent language
-UNCERTAINTY_PHRASES = {
-    "key_cards": "Results may vary if key cards underperform or are answered.",
-    "mana_curve": "Outcomes depend on hitting land drops on curve.",
-    "draw_consistency": "May differ with more or less card selection.",
-    "interaction": "Results assume typical interaction from opponents.",
-    "meta_dependent": "Performance varies based on current meta composition.",
-    "sample_size": "Based on limited data; actual results may differ.",
-    "assumption_based": "Based on current assumptions about the deck.",
+# Conditional phrases for consistent language
+# These describe what would change an interpretation, not what will happen
+CONDITIONAL_PHRASES = {
+    "key_cards": "If key cards perform differently than expected, this interpretation changes.",
+    "mana_curve": "If land drops differ from the typical pattern, this shifts.",
+    "draw_consistency": "With different card selection density, this would vary.",
+    "interaction": "If opponent interaction differs from typical, this changes.",
+    "meta_dependent": "Under different meta compositions, this interpretation shifts.",
+    "sample_size": "With more data, this interpretation may change.",
+    "assumption_based": "This interpretation is based on current assumptions about the deck.",
 }
 
 
@@ -84,18 +88,19 @@ def create_completion_explanation(
 ) -> OutcomeExplanation:
     """Create explanation for deck completion percentage."""
     if completion_pct >= 100:
-        summary = "You have all cards needed to build this deck."
-        uncertainty = ""
+        summary = "All cards for this deck are present in your collection."
+        conditional = ""
     elif completion_pct >= 75:
-        summary = f"You're close to completing this deck, missing {missing_cards} cards."
-        uncertainty = (
-            "Wildcards needed may change if you acquire missing cards through packs."
+        summary = (
+            f"Your collection contains most cards for this deck. "
+            f"{missing_cards} cards are not present."
         )
+        conditional = "If you acquire cards through other means, this count changes."
     else:
-        summary = f"You need {missing_cards} more cards to complete this deck."
-        uncertainty = (
-            "Consider checking if you have functional replacements "
-            "for some missing cards."
+        summary = f"Your collection is missing {missing_cards} cards for this deck."
+        conditional = (
+            "This count reflects exact matches. "
+            "Functional alternatives are not considered."
         )
 
     assumptions = []
@@ -105,8 +110,7 @@ def create_completion_explanation(
     return OutcomeExplanation(
         summary=summary,
         assumptions_involved=assumptions,
-        uncertainty=uncertainty,
-        confidence="high" if completion_pct >= 75 else "medium",
+        conditional=conditional,
     )
 
 
@@ -117,36 +121,36 @@ def create_recommendation_explanation(
     fragility: float | None = None,
 ) -> OutcomeExplanation:
     """Create explanation for a deck recommendation score."""
+    # Describe what the score represents, not what the player should do
     if score > 0.8:
         summary = (
-            f"Highly recommended {archetype} deck. "
-            f"You have {completion_pct:.0f}% of the cards needed."
+            f"This {archetype} deck scores highly given your collection. "
+            f"You have {completion_pct:.0f}% of the cards."
         )
     elif score > 0.5:
         summary = (
-            f"Good option for {archetype}. "
+            f"This {archetype} deck has a moderate score. "
             f"You have {completion_pct:.0f}% of the cards."
         )
     else:
         summary = (
-            f"This {archetype} deck requires more cards to complete. "
+            f"This {archetype} deck scores lower given your collection. "
             f"Currently at {completion_pct:.0f}%."
         )
 
     assumptions = ["Mana Curve", "Key Card Dependency"]
-    uncertainty_parts = [UNCERTAINTY_PHRASES["assumption_based"]]
+    conditional_parts = [CONDITIONAL_PHRASES["assumption_based"]]
 
     if fragility is not None and fragility > 0.5:
-        uncertainty_parts.append(
-            "This deck has higher fragility - test with stress scenarios."
+        conditional_parts.append(
+            "Given high deviation from convention, this interpretation may shift under stress."
         )
         assumptions.append("Overall Fragility")
 
     return OutcomeExplanation(
         summary=summary,
         assumptions_involved=assumptions,
-        uncertainty=" ".join(uncertainty_parts),
-        confidence="medium",
+        conditional=" ".join(conditional_parts),
     )
 
 
@@ -157,27 +161,25 @@ def create_fragility_explanation(
     archetype: str,
 ) -> OutcomeExplanation:
     """Create explanation for fragility score."""
+    # Describe what fragility represents, not what to do about it
     if fragility < 0.2:
         summary = (
-            f"This {archetype} deck is stable with assumptions in healthy ranges."
+            f"This {archetype} deck's characteristics are within typical ranges "
+            f"for its archetype."
         )
-        confidence = "high"
     elif fragility < 0.5:
         summary = (
-            f"This {archetype} deck has {warnings} warning(s) that may affect "
-            "consistency under certain conditions."
+            f"This {archetype} deck has {warnings} characteristic(s) that differ "
+            "from typical patterns for its archetype."
         )
-        confidence = "medium"
     else:
         summary = (
-            f"This {archetype} deck has {criticals} critical issue(s) "
-            f"and {warnings} warning(s). Consider stress testing."
+            f"This {archetype} deck has {criticals} significant difference(s) "
+            f"and {warnings} other difference(s) from typical patterns."
         )
-        confidence = "low"
 
     return OutcomeExplanation(
         summary=summary,
         assumptions_involved=["Overall Fragility", "Key Card Dependency"],
-        uncertainty=UNCERTAINTY_PHRASES["key_cards"],
-        confidence=confidence,
+        conditional=CONDITIONAL_PHRASES["key_cards"],
     )

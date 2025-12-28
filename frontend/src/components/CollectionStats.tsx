@@ -89,7 +89,7 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
           </div>
         </div>
         <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
-          Counts include all copies from your imported collection. Unique count shows distinct card names.
+          These counts include all copies from your imported collection. Unique count reflects distinct card names.
         </p>
       </div>
 
@@ -115,7 +115,7 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
           )
         })}
         <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
-          Rarity affects wildcard cost. Rare and mythic cards are key for meta decks.
+          Rarity determines wildcard cost when crafting. Distribution shown is based on imported data.
         </p>
       </div>
 
@@ -142,7 +142,7 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
           )
         })}
         <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
-          Color distribution indicates which archetypes you can support. Depth in a color improves flexibility.
+          Color distribution reflects your imported collection. This does not account for mana costs or deck requirements.
         </p>
       </div>
 
@@ -166,7 +166,7 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
           ))}
         </div>
         <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
-          Type distribution affects deck building options. Strong creature base supports aggro; instants/sorceries favor control.
+          Type distribution reflects card types in your collection. Types are extracted from card data.
         </p>
       </div>
     </div>

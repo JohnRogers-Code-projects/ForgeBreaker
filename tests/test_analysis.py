@@ -261,7 +261,7 @@ class TestRankDecks:
 
         ranked = rank_decks([deck], collection, rarity_map)
 
-        assert "build this deck now" in ranked[0].recommendation_reason.lower()
+        assert "all cards for this deck are present" in ranked[0].recommendation_reason.lower()
 
     def test_recommendation_reason_incomplete(self, rarity_map: dict[str, str]) -> None:
         """Incomplete decks show completion percentage."""

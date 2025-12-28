@@ -216,16 +216,15 @@ export function DeckDetail({ deck, userId, onClose }: DeckDetailProps) {
             <ExplanationBlock
               summary={
                 isComplete
-                  ? "Having all cards doesn't guarantee results - performance depends on your skill with this archetype."
-                  : `Missing ${distance.missing_cards} cards. Consider if functional replacements exist in your collection.`
+                  ? "All required cards for this deck are present in your collection."
+                  : `Your collection is missing ${distance.missing_cards} cards for this deck.`
               }
-              uncertainty={
+              conditional={
                 !isComplete
-                  ? "Wildcard costs may change if you acquire cards through packs or rewards."
+                  ? "If you acquire cards through packs or rewards, this count changes."
                   : undefined
               }
               assumptions={['Key Card Dependency', 'Mana Curve']}
-              confidence={isComplete ? 'high' : completionPercent > 75 ? 'medium' : 'low'}
               compact
             />
           </div>

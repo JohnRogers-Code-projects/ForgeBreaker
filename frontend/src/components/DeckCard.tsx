@@ -34,8 +34,8 @@ export function DeckCard({ deck, userId, onSelect }: DeckCardProps) {
       <div className="flex gap-4 text-sm text-gray-500 mb-3">
         {deck.win_rate != null && (
           <ExplanationTooltip
-            summary="Win rate from tournament data and ladder samples."
-            uncertainty="Actual results vary based on skill, meta, and sample size."
+            summary="Win rate derived from available tournament and ladder data."
+            conditional="If data sources or sample size differ, this value would change."
           >
             <span className="cursor-help border-b border-dotted border-gray-400">
               Win rate: {(deck.win_rate * 100).toFixed(1)}%
@@ -44,8 +44,8 @@ export function DeckCard({ deck, userId, onSelect }: DeckCardProps) {
         )}
         {deck.meta_share != null && (
           <ExplanationTooltip
-            summary="How common this deck is in the current meta."
-            uncertainty="Meta share shifts with new releases and bans."
+            summary="Frequency of this deck in recorded matches."
+            conditional="If the meta composition changes, this value would shift."
           >
             <span className="cursor-help border-b border-dotted border-gray-400">
               Meta: {(deck.meta_share * 100).toFixed(1)}%

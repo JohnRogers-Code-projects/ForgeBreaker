@@ -16,7 +16,7 @@ from forgebreaker.analysis.distance import calculate_deck_distance
 from forgebreaker.models.collection import Collection
 from forgebreaker.models.deck import DeckDistance, MetaDeck, RankedDeck
 from forgebreaker.models.explanation import (
-    UNCERTAINTY_PHRASES,
+    CONDITIONAL_PHRASES,
     create_recommendation_explanation,
 )
 
@@ -114,26 +114,23 @@ def _generate_recommendation_reason(
     within_budget: bool,
 ) -> str:
     """
-    Generate a human-readable recommendation reason.
+    Generate a human-readable reason describing the deck's status.
 
-    Includes uncertainty language to be honest about limitations.
+    Describes consequences, not recommendations.
     """
     if can_build:
-        return (
-            "You can build this deck now! "
-            "Performance depends on your experience with the archetype."
-        )
+        return "All cards for this deck are present in your collection."
 
     missing = distance.missing_cards
     pct = int(distance.completion_percentage * 100)
     cost = distance.wildcard_cost
 
     if within_budget:
-        reason = f"{pct}% complete, needs {missing} cards ({cost.total()} wildcards). "
-        reason += UNCERTAINTY_PHRASES["assumption_based"]
+        reason = f"{pct}% complete, missing {missing} cards ({cost.total()} wildcards). "
+        reason += CONDITIONAL_PHRASES["assumption_based"]
         return reason
 
-    # Highlight the expensive rarities
+    # Describe the expensive rarities without advising
     expensive_parts: list[str] = []
     if cost.mythic > 0:
         expensive_parts.append(f"{cost.mythic} mythic")
@@ -141,11 +138,10 @@ def _generate_recommendation_reason(
         expensive_parts.append(f"{cost.rare} rare")
 
     if expensive_parts:
-        reason = f"{pct}% complete, needs {', '.join(expensive_parts)} wildcards. "
-        reason += "Consider if the investment matches your goals."
+        reason = f"{pct}% complete, missing {', '.join(expensive_parts)} wildcards."
         return reason
 
-    return f"{pct}% complete, needs {missing} cards"
+    return f"{pct}% complete, missing {missing} cards"
 
 
 def generate_explained_recommendation(
@@ -156,22 +152,22 @@ def generate_explained_recommendation(
     fragility: float | None = None,
 ) -> dict:
     """
-    Generate a recommendation with full explanation.
+    Generate a description with full explanation.
 
     Returns a dictionary suitable for API responses that includes:
-    - The recommendation reason
+    - The status description
     - Assumptions involved
-    - Uncertainty statement
+    - Conditional statement (what changes this interpretation)
 
     Args:
         distance: Deck distance calculation
-        score: Recommendation score
+        score: Ranking score
         can_build: Whether deck can be built now
         within_budget: Whether deck is within wildcard budget
         fragility: Optional fragility score from assumptions analysis
 
     Returns:
-        Dict with reason, explanation, and uncertainty
+        Dict with reason, explanation, and conditional
     """
     reason = _generate_recommendation_reason(distance, can_build, within_budget)
     explanation = create_recommendation_explanation(
@@ -185,8 +181,7 @@ def generate_explained_recommendation(
         "reason": reason,
         "summary": explanation.summary,
         "assumptions_involved": explanation.assumptions_involved,
-        "uncertainty": explanation.uncertainty,
-        "confidence": explanation.confidence,
+        "conditional": explanation.conditional,
     }
 
 

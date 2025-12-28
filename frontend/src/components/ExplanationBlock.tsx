@@ -2,28 +2,19 @@ import { useState } from 'react'
 
 interface ExplanationBlockProps {
   summary: string
-  uncertainty?: string
+  conditional?: string  // Renamed from 'uncertainty' - what changes this interpretation
   assumptions?: string[]
-  confidence?: 'low' | 'medium' | 'high'
   compact?: boolean
-}
-
-const CONFIDENCE_COLORS: Record<string, { bg: string; text: string }> = {
-  high: { bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e' },
-  medium: { bg: 'rgba(234, 179, 8, 0.1)', text: '#eab308' },
-  low: { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444' },
 }
 
 export function ExplanationBlock({
   summary,
-  uncertainty,
+  conditional,
   assumptions,
-  confidence = 'medium',
   compact = false,
 }: ExplanationBlockProps) {
   const [expanded, setExpanded] = useState(false)
-  const colors = CONFIDENCE_COLORS[confidence]
-  const hasDetails = uncertainty || (assumptions && assumptions.length > 0)
+  const hasDetails = conditional || (assumptions && assumptions.length > 0)
 
   if (compact) {
     return (
@@ -31,7 +22,7 @@ export function ExplanationBlock({
         className="flex items-start gap-2 text-sm"
         style={{ color: 'var(--color-text-secondary)' }}
       >
-        <span className="text-xs" style={{ color: colors.text }}>
+        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
           ?
         </span>
         <span>{summary}</span>
@@ -43,8 +34,8 @@ export function ExplanationBlock({
     <div
       className="rounded p-3"
       style={{
-        backgroundColor: colors.bg,
-        border: `1px solid ${colors.text}30`,
+        backgroundColor: 'var(--color-bg-elevated)',
+        border: '1px solid var(--color-border)',
       }}
     >
       <div
@@ -53,9 +44,9 @@ export function ExplanationBlock({
       >
         <span
           className="text-xs font-medium mt-0.5"
-          style={{ color: colors.text }}
+          style={{ color: 'var(--color-text-secondary)' }}
         >
-          {confidence === 'high' ? 'Confident' : confidence === 'low' ? 'Uncertain' : 'Note'}
+          Note
         </span>
         <div className="flex-1">
           <p
@@ -78,21 +69,21 @@ export function ExplanationBlock({
       {expanded && hasDetails && (
         <div
           className="mt-3 pt-3 border-t space-y-2"
-          style={{ borderColor: `${colors.text}30` }}
+          style={{ borderColor: 'var(--color-border)' }}
         >
-          {uncertainty && (
+          {conditional && (
             <div className="flex items-start gap-2">
               <span
                 className="text-xs font-medium"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
-                If:
+                Given:
               </span>
               <p
                 className="text-sm"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
-                {uncertainty}
+                {conditional}
               </p>
             </div>
           )}
@@ -102,7 +93,7 @@ export function ExplanationBlock({
                 className="text-xs font-medium"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
-                Based on:
+                Depends on:
               </span>
               <div className="flex flex-wrap gap-1">
                 {assumptions.map((assumption, idx) => (
@@ -110,7 +101,7 @@ export function ExplanationBlock({
                     key={idx}
                     className="text-xs px-1.5 py-0.5 rounded"
                     style={{
-                      backgroundColor: 'var(--color-bg-elevated)',
+                      backgroundColor: 'var(--color-bg-surface)',
                       color: 'var(--color-text-secondary)',
                     }}
                   >
@@ -129,19 +120,11 @@ export function ExplanationBlock({
 /**
  * Inline explanation for use next to metrics
  */
-export function InlineExplanation({
-  text,
-  confidence = 'medium',
-}: {
-  text: string
-  confidence?: 'low' | 'medium' | 'high'
-}) {
-  const colors = CONFIDENCE_COLORS[confidence]
-
+export function InlineExplanation({ text }: { text: string }) {
   return (
     <span
       className="text-xs ml-1"
-      style={{ color: colors.text }}
+      style={{ color: 'var(--color-text-secondary)' }}
       title={text}
     >
       *
@@ -155,11 +138,11 @@ export function InlineExplanation({
 export function ExplanationTooltip({
   children,
   summary,
-  uncertainty,
+  conditional,
 }: {
   children: React.ReactNode
   summary: string
-  uncertainty?: string
+  conditional?: string
 }) {
   const [showTooltip, setShowTooltip] = useState(false)
 
@@ -184,12 +167,12 @@ export function ExplanationTooltip({
           }}
         >
           <p style={{ color: 'var(--color-text-primary)' }}>{summary}</p>
-          {uncertainty && (
+          {conditional && (
             <p
               className="mt-2 text-xs"
               style={{ color: 'var(--color-text-secondary)' }}
             >
-              {uncertainty}
+              Given: {conditional}
             </p>
           )}
           <div
