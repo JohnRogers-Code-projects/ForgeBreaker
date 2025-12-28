@@ -1,296 +1,165 @@
 # ForgeBreaker
 
-MTG Arena collection manager that suggests decks based on owned cards, using ML-powered recommendations.
+## Why does my deck feel inconsistent?
 
-## Why ForgeBreaker?
+That's the question ForgeBreaker helps you answer.
 
-Building competitive decks in MTG Arena is frustrating:
+Not "what's the best deck" or "what's my winrate." Those tools exist. ForgeBreaker asks different questions:
 
-- **Wildcards are precious** - You don't want to spend rare wildcards on a deck you can't finish
-- **Meta decks require cards you don't own** - Most deck sites assume you have everything
-- **No visibility into what's buildable** - Arena doesn't show which meta decks match your collection
+- **"Which card is my deck secretly relying on?"**
+- **"What happens when this assumption fails?"**
+- **"What part of my deck breaks first?"**
 
-ForgeBreaker solves this by analyzing your collection and ranking meta decks by how close you are to completing them. It uses ML-powered recommendations to surface decks you can actually build, not just what's theoretically best.
+If you've ever lost a game and thought "that felt unlucky, but was it?" — ForgeBreaker helps you find out.
 
-## Features
+---
 
-- Import your Arena collection via text export
-- Browse competitive meta decks from MTGGoldfish
-- See how close you are to completing each deck
-- **ML-powered deck recommendations** blending collection analysis with [MLForge scoring](docs/MODEL_CARD.md)
-- Get recommendations based on your wildcard budget
-- AI-powered deck advice via Claude with MCP tool calling
+## What ForgeBreaker Actually Does
 
-## Architecture
+ForgeBreaker makes your deck's **assumptions** visible.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed system design.
+Every deck relies on assumptions you may not have articulated:
 
-ForgeBreaker integrates with MLForge for ML-based deck recommendations:
+- "I'll hit my third land drop by turn 3"
+- "Monastery Swiftspear will connect at least twice"
+- "I'll draw removal before their threat lands"
+
+These aren't guarantees. They're assumptions. And when they fail, your deck underperforms.
+
+**ForgeBreaker surfaces these assumptions, lets you stress them, and shows you what breaks.**
+
+### The Core Loop
 
 ```
-User Query → ForgeBreaker API
-                ↓
-         Load Collection (PostgreSQL)
-                ↓
-         Load Meta Decks (MTGGoldfish)
-                ↓
-         Extract Features (DeckFeatures)
-                ↓
-         Call MLForge API (batch scoring)
-                ↓
-         Blend ML Score (60%) + Heuristics (40%)
-                ↓
-         Return Ranked Recommendations
+1. Surface Assumptions
+   → See what your deck depends on (mana curve, key cards, interaction timing)
+
+2. Stress Test
+   → Ask "what if this card underperforms?" or "what if I'm a turn behind?"
+
+3. Find the Breaking Point
+   → Discover which assumption failing hurts you most
+
+4. Understand Why
+   → Every result explains what changed and what it depends on
 ```
 
-**Data Flow:**
-1. User requests deck recommendations via `/chat` endpoint (using MCP tool calling)
-2. ForgeBreaker loads collection and available meta decks from database
-3. For each deck, extracts ML features: completion %, wildcard costs, archetype, win rate
-4. Sends batch feature request to MLForge (`/api/v1/score/batch`)
-5. MLForge returns ML confidence scores for each deck
-6. Blends ML score (weighted by confidence) with heuristic score
-7. Returns ranked deck recommendations with `scoring_method: "ml_blended"`
+---
 
-**Graceful Fallback:** If MLForge is unavailable, automatically falls back to heuristic-only scoring.
+## What ForgeBreaker Does NOT Do
 
-## Tech Stack
+**ForgeBreaker does not track your ladder performance.**
+
+It doesn't know your rank. It doesn't log your matches. It cannot tell you "play this deck to climb."
+
+**ForgeBreaker does not predict winrates.**
+
+Meta winrate data is displayed for context, sourced from public aggregators. But ForgeBreaker does not claim to predict *your* winrate. Your results depend on your skill, your meta pocket, and variance.
+
+**ForgeBreaker does not optimize for meta dominance.**
+
+It won't tell you "Deck X is 2% better than Deck Y." It helps you understand *why* a deck works, not *whether* it's statistically optimal.
+
+**ForgeBreaker is not a replacement for playtesting.**
+
+Understanding that your deck relies on resolving a turn-2 threat doesn't mean you've played the games. It means you know what to watch for when you do.
+
+---
+
+## Who This Is For
+
+**Deck brewers** who want to understand why their creations succeed or fail.
+
+**Budget-conscious players** who need to know if spending wildcards on Deck X will actually address the consistency problems they're experiencing with Deck Y.
+
+**Theorycrafters** who want to articulate and test the assumptions behind their deck choices.
+
+**Players who ask "why"** instead of just "what."
+
+---
+
+## Key Concepts
+
+### Assumptions
+
+An **assumption** is something your deck needs to be true to function as designed.
+
+Examples:
+- "I have at least 8 one-drops for consistent turn-1 plays"
+- "My removal will answer their early threats before I stabilize"
+- "I'll draw one of my 4 payoff cards in the first 10 cards"
+
+ForgeBreaker identifies these assumptions from your decklist and card database.
+
+### Fragility
+
+**Fragility** measures how sensitive your deck is to assumption failures.
+
+A fragile deck breaks when one thing goes wrong. A resilient deck can absorb variance.
+
+ForgeBreaker calculates fragility by checking how many assumptions are outside healthy ranges and how severely.
+
+### Breaking Point
+
+The **breaking point** is the assumption that, when stressed, causes the largest increase in fragility.
+
+Finding your breaking point tells you where to focus if you want to improve consistency.
+
+### Stress Testing
+
+**Stress testing** means intentionally worsening an assumption to see the impact.
+
+- "What if my key card is answered every time?"
+- "What if I miss my third land drop?"
+- "What if the meta has more removal than expected?"
+
+ForgeBreaker simulates these scenarios and shows you the before/after fragility change.
+
+---
+
+## How It Works
+
+1. **Import your collection** — Paste your Arena export
+2. **Browse meta decks** — See competitive lists with completion percentages
+3. **Select a deck** — View its assumptions, fragility, and key dependencies
+4. **Stress test** — Ask "what if?" and see what breaks
+5. **Understand the result** — Every outcome includes an explanation
+
+---
+
+## Technical Details
+
+### Tech Stack
 
 - **Backend**: Python 3.11+ / FastAPI
-- **Frontend**: React 18 / TypeScript / Tailwind CSS
+- **Frontend**: React 19 / TypeScript / Tailwind CSS
 - **Database**: PostgreSQL (async via SQLAlchemy 2.0)
-- **ML**: MLForge API for recommendation scoring
 - **LLM**: Claude API with MCP tool calling
 
-## Development
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 15+
-
-### Backend Setup
+### Development Setup
 
 ```bash
-# Create virtual environment
+# Backend
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-
-# Install dependencies
+source venv/bin/activate
 pip install -e ".[dev]"
-
-# Set environment variables
 export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/forgebreaker"
-export ANTHROPIC_API_KEY="your-api-key"
-
-# Run linting
-ruff check .
-ruff format --check .
-
-# Run type checking
-mypy forgebreaker
-
-# Run tests (requires 70% coverage)
-pytest
-
-# Expected output:
-# ============================= test session starts ==============================
-# collected 422 items
-# ...
-# ============================= 422 passed in 45.23s ==============================
-# TOTAL                                                        83%
-
-# Start dev server
 uvicorn forgebreaker.main:app --reload
-```
 
-### Frontend Setup
-
-```bash
+# Frontend
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
-
-# Build for production
-npm run build
 ```
 
-## API Endpoints
+### Environment Variables
 
-### Health
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `ANTHROPIC_API_KEY` | Claude API key (for chat) |
 
-- `GET /health` - Health check
-- `GET /ready` - Readiness check
-
-### Collection
-
-- `GET /collection/{user_id}` - Get user's collection stats
-- `POST /collection/{user_id}` - Import Arena collection (body: `{"arena_export": "..."}`)
-
-### Decks
-
-- `GET /decks/{format}` - List meta decks for format
-- `GET /decks/{format}/{deck_name}` - Get specific deck
-
-### Distance
-
-- `GET /distance/{user_id}/{format}/{deck_name}` - Calculate collection distance to deck
-
-### Chat
-
-- `POST /chat/` - Send chat message (body: `{"user_id": "...", "messages": [...]}`)
-
-## Example API Usage
-
-### Import a Collection
-
-```bash
-curl -X POST http://localhost:8000/collection/user123/import \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "4 Lightning Bolt\n4 Monastery Swiftspear\n20 Mountain",
-    "format": "auto"
-  }'
-```
-
-Response:
-```json
-{
-  "user_id": "user123",
-  "cards_imported": 3,
-  "total_cards": 28,
-  "cards": {
-    "Lightning Bolt": 4,
-    "Monastery Swiftspear": 4,
-    "Mountain": 20
-  }
-}
-```
-
-### Get Meta Decks
-
-```bash
-curl http://localhost:8000/decks/standard
-```
-
-Response (cards/sideboard truncated for brevity):
-```json
-{
-  "format": "standard",
-  "decks": [
-    {
-      "name": "Mono Red Aggro",
-      "archetype": "Aggro",
-      "format": "standard",
-      "cards": {"Monastery Swiftspear": 4, "Play with Fire": 4},
-      "sideboard": {"Roiling Vortex": 2},
-      "win_rate": 0.54,
-      "meta_share": 0.12,
-      "source_url": "https://mtggoldfish.com/..."
-    }
-  ],
-  "count": 1
-}
-```
-
-### Calculate Deck Distance
-
-```bash
-curl http://localhost:8000/distance/user123/standard/Mono%20Red%20Aggro
-```
-
-Response:
-```json
-{
-  "deck_name": "Mono Red Aggro",
-  "deck_format": "standard",
-  "owned_cards": 24,
-  "missing_cards": 16,
-  "total_cards": 40,
-  "completion_percentage": 0.6,
-  "is_complete": false,
-  "wildcard_cost": {
-    "common": 0,
-    "uncommon": 4,
-    "rare": 8,
-    "mythic": 4,
-    "total": 16
-  }
-}
-```
-
-### Chat with Claude
-
-```bash
-curl -X POST http://localhost:8000/chat/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user123",
-    "messages": [{"role": "user", "content": "What meta decks can I build?"}]
-  }'
-```
-
-Response:
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": "Based on your collection, here are the meta decks you're closest to completing..."
-  },
-  "tool_calls": [
-    {"name": "get_deck_recommendations", "input": {"format": "standard"}}
-  ]
-}
-```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://localhost:5432/forgebreaker` |
-| `ANTHROPIC_API_KEY` | Claude API key | (required for chat) |
-| `MLFORGE_URL` | MLForge API endpoint | `https://backend-production-b2b8.up.railway.app` |
-| `DEBUG` | Enable debug mode | `false` |
-
-## Deployment
-
-The app is configured for Railway deployment:
-
-- `railway.toml` - Railway configuration
-- `Procfile` - Process definition
-- `runtime.txt` - Python version
-
-### Deploy to Railway
-
-1. Connect your GitHub repo to Railway
-2. Set environment variables in Railway dashboard
-3. Deploy
-
-## Project Structure
-
-```
-forgebreaker/
-├── api/           # FastAPI routers
-├── analysis/      # Deck distance/ranking
-├── db/            # Database operations
-├── jobs/          # Scheduled jobs
-├── mcp/           # MCP tool definitions
-├── ml/            # ML feature engineering
-├── models/        # Domain models
-├── parsers/       # Arena export/Scryfall parsers
-└── scrapers/      # MTGGoldfish scraper
-
-frontend/
-├── src/
-│   ├── api/       # API client
-│   ├── components/# React components
-│   └── hooks/     # React Query hooks
-```
+---
 
 ## License
 

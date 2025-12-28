@@ -6,13 +6,13 @@ import { ChatAdvisor } from './components/ChatAdvisor'
 import { CollectionImporter } from './components/CollectionImporter'
 import { DeckBrowser } from './components/DeckBrowser'
 import { DeckDetail } from './components/DeckDetail'
+import { LandingPage } from './components/LandingPage'
 import { TabNav, type TabId } from './components/TabNav'
 
 function App() {
   const [userId, setUserId] = useState(() => {
     return localStorage.getItem('forgebreaker_user_id') || ''
   })
-  const [userIdInput, setUserIdInput] = useState(userId)
   const [selectedDeck, setSelectedDeck] = useState<DeckResponse | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('chat')
 
@@ -30,12 +30,9 @@ function App() {
     retry: false,
   })
 
-  const handleSetUserId = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (userIdInput.trim()) {
-      setUserId(userIdInput.trim())
-      localStorage.setItem('forgebreaker_user_id', userIdInput.trim())
-    }
+  const handleSetUserId = (newUserId: string) => {
+    setUserId(newUserId)
+    localStorage.setItem('forgebreaker_user_id', newUserId)
   }
 
   return (
@@ -53,7 +50,7 @@ function App() {
               >
                 ForgeBreaker
               </h1>
-              <p style={{ color: 'var(--color-text-secondary)' }}>MTG Arena Deck Advisor</p>
+              <p style={{ color: 'var(--color-text-secondary)' }}>Understand your deck, not just build it</p>
             </div>
 
             {userId && (
@@ -67,7 +64,6 @@ function App() {
                   <button
                     onClick={() => {
                       setUserId('')
-                      setUserIdInput('')
                       localStorage.removeItem('forgebreaker_user_id')
                     }}
                     className="text-sm px-2 py-1 rounded hover:opacity-80 transition-opacity"
@@ -100,51 +96,14 @@ function App() {
           </div>
         )}
 
-        {/* User ID Setup */}
+        {/* Landing Page or Main App */}
         {!userId ? (
-          <div
-            className="rounded-lg shadow p-8 max-w-md mx-auto mt-20"
-            style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--color-border)' }}
-          >
-            <h2
-              className="text-xl font-semibold mb-4"
-              style={{ color: 'var(--color-text-primary)' }}
-            >
-              Get Started
-            </h2>
-            <p className="mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-              Enter a username to start tracking your collection.
-            </p>
-            <form onSubmit={handleSetUserId} className="flex gap-3">
-              <input
-                type="text"
-                value={userIdInput}
-                onChange={(e) => setUserIdInput(e.target.value)}
-                placeholder="Enter your username"
-                className="flex-1 px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e94560]"
-                style={{
-                  backgroundColor: 'var(--color-bg-elevated)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-primary)',
-                }}
-              />
-              <button
-                type="submit"
-                disabled={!userIdInput.trim()}
-                className="px-6 py-2 font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                style={{ backgroundColor: 'var(--color-accent-primary)', color: 'white' }}
-              >
-                Continue
-              </button>
-            </form>
-            {health && (
-              <p className="mt-4 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                Backend connected
-              </p>
-            )}
-          </div>
+          <LandingPage
+            onSetUserId={handleSetUserId}
+            isBackendConnected={!!health}
+          />
         ) : (
-          <div className="h-[calc(100vh-140px)]">
+          <div className="h-[calc(100vh-120px)]">
             {/* Chat Tab */}
             {activeTab === 'chat' && (
               <ChatAdvisor userId={userId} />
