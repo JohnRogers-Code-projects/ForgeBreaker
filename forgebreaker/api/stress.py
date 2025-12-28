@@ -1,7 +1,10 @@
 """
 Stress testing API endpoint.
 
-Apply stress scenarios to decks and analyze breaking points.
+Explore hypothetical scenarios with decks to examine which beliefs
+might not hold under certain conditions.
+
+This is exploration, not prediction.
 """
 
 from typing import Annotated, Any
@@ -20,7 +23,7 @@ router = APIRouter(prefix="/stress", tags=["stress"])
 
 
 class StressScenarioRequest(BaseModel):
-    """Request to apply a stress scenario."""
+    """Request to explore a stress scenario."""
 
     stress_type: str = Field(
         description="Type of stress: underperform, missing, delayed, hostile_meta"
@@ -37,7 +40,7 @@ class StressScenarioRequest(BaseModel):
 
 
 class StressedAssumptionResponse(BaseModel):
-    """A single assumption after stress."""
+    """How a belief changes under stress."""
 
     name: str
     original_value: Any
@@ -45,10 +48,17 @@ class StressedAssumptionResponse(BaseModel):
     original_health: str
     stressed_health: str
     change_explanation: str
+    belief_violated: bool = False
+    violation_reason: str = ""
 
 
 class StressResultResponse(BaseModel):
-    """Result of applying stress to a deck."""
+    """
+    Result of exploring a stress scenario with a deck.
+
+    A breaking point occurs when a specific belief can no longer be held,
+    NOT when a numeric threshold is crossed.
+    """
 
     deck_name: str
     stress_type: str
@@ -58,20 +68,37 @@ class StressResultResponse(BaseModel):
     stressed_fragility: float
     fragility_change: float
     affected_assumptions: list[StressedAssumptionResponse]
-    breaking_point: bool
-    explanation: str
-    recommendations: list[str]
+    # New semantic fields
+    assumption_violated: bool
+    violated_belief: str
+    violation_explanation: str
+    exploration_summary: str
+    considerations: list[str]
+    # Backwards compatibility
+    breaking_point: bool  # Deprecated: use assumption_violated
+    explanation: str  # Deprecated: use exploration_summary
+    recommendations: list[str]  # Deprecated: use considerations
 
 
 class BreakingPointResponse(BaseModel):
-    """Analysis of deck breaking points."""
+    """
+    Analysis of which belief fails first under stress.
+
+    This identifies the most vulnerable assumption, not a prediction of failure.
+    """
 
     deck_name: str
-    weakest_assumption: str
-    breaking_intensity: float
-    resilience_score: float
-    breaking_scenario: StressScenarioRequest | None
-    explanation: str
+    # New semantic fields
+    most_vulnerable_belief: str
+    stress_threshold: float
+    failing_scenario: StressScenarioRequest | None
+    exploration_insight: str
+    # Backwards compatibility
+    weakest_assumption: str  # Deprecated: use most_vulnerable_belief
+    breaking_intensity: float  # Deprecated: use stress_threshold
+    resilience_score: float  # Deprecated: removed concept
+    breaking_scenario: StressScenarioRequest | None  # Deprecated: use failing_scenario
+    explanation: str  # Deprecated: use exploration_insight
 
 
 @router.post("/{user_id}/{format_name}/{deck_name}", response_model=StressResultResponse)
@@ -83,15 +110,18 @@ async def stress_deck(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> StressResultResponse:
     """
-    Apply a stress scenario to a deck.
+    Explore what happens to deck beliefs under a hypothetical scenario.
+
+    This does NOT predict how the deck will perform. It helps players
+    examine which of their beliefs might not hold under certain conditions.
 
     Stress types:
-    - underperform: Key cards appear less frequently
-    - missing: Remove copies of a specific card
-    - delayed: Simulate mana problems
-    - hostile_meta: Face more interaction than expected
+    - underperform: What if key cards are drawn less frequently?
+    - missing: What if a specific card is unavailable?
+    - delayed: What if mana development is problematic?
+    - hostile_meta: What if opponents have more answers?
 
-    Returns before/after fragility comparison and recommendations.
+    Returns insight into how beliefs change under stress.
     """
     # Get the deck
     db_deck = await get_meta_deck(session, deck_name, format_name)
@@ -126,7 +156,7 @@ async def stress_deck(
         stress_type=stress_type,
         target=scenario.target,
         intensity=scenario.intensity,
-        description=f"Stress test: {stress_type.value} on {scenario.target}",
+        description=f"What if {stress_type.value} affects {scenario.target}?",
     )
 
     result = apply_stress(deck, card_db, stress_scenario)
@@ -147,12 +177,21 @@ async def stress_deck(
                 original_health=a.original_health,
                 stressed_health=a.stressed_health,
                 change_explanation=a.change_explanation,
+                belief_violated=a.belief_violated,
+                violation_reason=a.violation_reason,
             )
             for a in result.affected_assumptions
         ],
-        breaking_point=result.breaking_point,
-        explanation=result.explanation,
-        recommendations=result.recommendations,
+        # New semantic fields
+        assumption_violated=result.assumption_violated,
+        violated_belief=result.violated_belief,
+        violation_explanation=result.violation_explanation,
+        exploration_summary=result.exploration_summary,
+        considerations=result.considerations,
+        # Backwards compatibility
+        breaking_point=result.assumption_violated,
+        explanation=result.exploration_summary,
+        recommendations=result.considerations,
     )
 
 
@@ -167,10 +206,10 @@ async def get_breaking_point(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BreakingPointResponse:
     """
-    Find the breaking point of a deck.
+    Identify which belief fails first under increasing stress.
 
-    Analyzes the deck under multiple stress scenarios to find
-    its weakest point and overall resilience.
+    This explores which assumption is most sensitive to change—
+    not a prediction of failure, but insight into deck dependencies.
     """
     # Get the deck
     db_deck = await get_meta_deck(session, deck_name, format_name)
@@ -190,19 +229,25 @@ async def get_breaking_point(
 
     analysis = find_breaking_point(deck, card_db)
 
-    breaking_scenario = None
-    if analysis.breaking_scenario:
-        breaking_scenario = StressScenarioRequest(
-            stress_type=analysis.breaking_scenario.stress_type.value,
-            target=analysis.breaking_scenario.target,
-            intensity=analysis.breaking_scenario.intensity,
+    failing_scenario = None
+    if analysis.failing_scenario:
+        failing_scenario = StressScenarioRequest(
+            stress_type=analysis.failing_scenario.stress_type.value,
+            target=analysis.failing_scenario.target,
+            intensity=analysis.failing_scenario.intensity,
         )
 
     return BreakingPointResponse(
         deck_name=analysis.deck_name,
-        weakest_assumption=analysis.weakest_assumption,
-        breaking_intensity=analysis.breaking_intensity,
-        resilience_score=analysis.resilience_score,
-        breaking_scenario=breaking_scenario,
-        explanation=analysis.explanation,
+        # New semantic fields
+        most_vulnerable_belief=analysis.most_vulnerable_belief,
+        stress_threshold=analysis.stress_threshold,
+        failing_scenario=failing_scenario,
+        exploration_insight=analysis.exploration_insight,
+        # Backwards compatibility
+        weakest_assumption=analysis.most_vulnerable_belief,
+        breaking_intensity=analysis.stress_threshold,
+        resilience_score=analysis.stress_threshold,  # Deprecated concept
+        breaking_scenario=failing_scenario,
+        explanation=analysis.exploration_insight,
     )

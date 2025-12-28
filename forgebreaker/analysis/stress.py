@@ -1,13 +1,18 @@
 """
 Stress testing analysis for decks.
 
-Applies stress scenarios to deck assumptions and measures the impact
-on deck fragility and performance expectations.
+Stress testing explores hypothetical scenarios to help players examine
+their beliefs about what their deck needs to function.
+
+A breaking point is NOT a numeric threshold. It occurs when a specific
+player belief can no longer be reasonably held under the scenario.
+
+This is exploration, not prediction.
 """
 
 from typing import Any
 
-from forgebreaker.analysis.assumptions import extract_assumptions
+from forgebreaker.analysis.assumptions import surface_assumptions
 from forgebreaker.models.assumptions import (
     AssumptionCategory,
     AssumptionHealth,
@@ -29,18 +34,21 @@ def apply_stress(
     scenario: StressScenario,
 ) -> StressResult:
     """
-    Apply a stress scenario to a deck and measure the impact.
+    Explore what happens to deck beliefs under a hypothetical scenario.
+
+    This does NOT predict how the deck will perform. It helps players
+    examine which of their beliefs might not hold under certain conditions.
 
     Args:
-        deck: The deck to stress
+        deck: The deck to explore
         card_db: Scryfall card database
-        scenario: The stress scenario to apply
+        scenario: The hypothetical scenario to explore
 
     Returns:
-        StressResult with before/after comparison and explanations
+        StressResult with insight into how beliefs change under stress
     """
     # Get baseline assumptions
-    baseline = extract_assumptions(deck, card_db)
+    baseline = surface_assumptions(deck, card_db)
 
     # Apply stress based on type
     if scenario.stress_type == StressType.UNDERPERFORM:
@@ -58,7 +66,7 @@ def apply_stress(
         scenario=scenario,
         original_fragility=baseline.overall_fragility,
         stressed_fragility=baseline.overall_fragility,
-        explanation="Unknown stress type - no changes applied.",
+        exploration_summary="Unknown stress type - no changes applied.",
     )
 
 
@@ -67,38 +75,41 @@ def find_breaking_point(
     card_db: dict[str, dict[str, Any]],
 ) -> BreakingPointAnalysis:
     """
-    Find the weakest point in a deck by testing multiple stress scenarios.
+    Identify which belief fails first under increasing stress.
+
+    This explores which assumption is most sensitive to change—
+    not a prediction of failure, but insight into deck dependencies.
 
     Args:
-        deck: The deck to analyze
+        deck: The deck to explore
         card_db: Scryfall card database
 
     Returns:
-        BreakingPointAnalysis identifying the most vulnerable assumption
+        BreakingPointAnalysis identifying the most vulnerable belief
     """
-    baseline = extract_assumptions(deck, card_db)
+    baseline = surface_assumptions(deck, card_db)
 
     # Test each assumption category with increasing intensity
-    worst_result: StressResult | None = None
-    lowest_intensity_break = 1.1  # Start higher than max
+    first_violated_result: StressResult | None = None
+    first_violation_intensity = 1.1  # Start higher than max
 
     # Test key card stress
     key_cards_assumptions = baseline.get_by_category(AssumptionCategory.KEY_CARDS)
     for assumption in key_cards_assumptions:
-        if isinstance(assumption.current_value, list) and assumption.current_value:
+        if isinstance(assumption.observed_value, list) and assumption.observed_value:
             # Test removing key cards
-            for card in assumption.current_value[:3]:  # Test top 3 key cards
+            for card in assumption.observed_value[:3]:  # Test top 3 key cards
                 for intensity in [0.25, 0.5, 0.75, 1.0]:
                     scenario = StressScenario(
                         stress_type=StressType.MISSING,
                         target=card,
                         intensity=intensity,
-                        description=f"Remove copies of {card}",
+                        description=f"What if {card} is unavailable?",
                     )
                     result = apply_stress(deck, card_db, scenario)
-                    if result.breaking_point and intensity < lowest_intensity_break:
-                        lowest_intensity_break = intensity
-                        worst_result = result
+                    if result.assumption_violated and intensity < first_violation_intensity:
+                        first_violation_intensity = intensity
+                        first_violated_result = result
 
     # Test mana curve stress
     for intensity in [0.25, 0.5, 0.75, 1.0]:
@@ -106,12 +117,12 @@ def find_breaking_point(
             stress_type=StressType.DELAYED,
             target="mana_curve",
             intensity=intensity,
-            description="Delay mana development",
+            description="What if mana development is delayed?",
         )
         result = apply_stress(deck, card_db, scenario)
-        if result.breaking_point and intensity < lowest_intensity_break:
-            lowest_intensity_break = intensity
-            worst_result = result
+        if result.assumption_violated and intensity < first_violation_intensity:
+            first_violation_intensity = intensity
+            first_violated_result = result
 
     # Test hostile meta
     for intensity in [0.25, 0.5, 0.75, 1.0]:
@@ -119,64 +130,56 @@ def find_breaking_point(
             stress_type=StressType.HOSTILE_META,
             target="interaction",
             intensity=intensity,
-            description="Face more interaction",
+            description="What if opponents have more answers?",
         )
         result = apply_stress(deck, card_db, scenario)
-        if result.breaking_point and intensity < lowest_intensity_break:
-            lowest_intensity_break = intensity
-            worst_result = result
+        if result.assumption_violated and intensity < first_violation_intensity:
+            first_violation_intensity = intensity
+            first_violated_result = result
 
-    # Calculate resilience (inverse of how easily it breaks)
-    # Early break = low resilience, never broke = max resilience
-    resilience = lowest_intensity_break if lowest_intensity_break <= 1.0 else 1.0
-
-    if worst_result:
-        weakest = (
-            worst_result.affected_assumptions[0].name
-            if worst_result.affected_assumptions
-            else "Unknown"
-        )
-        explanation = (
-            f"The deck's weakest point is '{weakest}'. "
-            f"At {int(lowest_intensity_break * 100)}% stress intensity, "
-            f"the deck's fragility increases significantly. "
-            f"{worst_result.explanation}"
+    if first_violated_result:
+        violated = first_violated_result.violated_belief or "Unknown"
+        insight = (
+            f"The belief '{violated}' is most sensitive to stress. "
+            f"Given {first_violated_result.scenario.description.lower()}, "
+            f"this belief may no longer hold. "
+            f"{first_violated_result.violation_explanation}"
         )
         return BreakingPointAnalysis(
             deck_name=deck.name,
-            weakest_assumption=weakest,
-            breaking_intensity=lowest_intensity_break,
-            breaking_scenario=worst_result.scenario,
-            resilience_score=resilience,
-            explanation=explanation,
+            most_vulnerable_belief=violated,
+            stress_threshold=first_violation_intensity,
+            failing_scenario=first_violated_result.scenario,
+            exploration_insight=insight,
         )
 
     return BreakingPointAnalysis(
         deck_name=deck.name,
-        weakest_assumption="None found",
-        breaking_intensity=1.0,
-        breaking_scenario=None,
-        resilience_score=1.0,
-        explanation=(
-            "This deck showed no clear breaking points under stress testing. "
-            "It appears resilient to the tested scenarios."
+        most_vulnerable_belief="None identified",
+        stress_threshold=1.0,
+        failing_scenario=None,
+        exploration_insight=(
+            "No beliefs were clearly invalidated under the tested scenarios. "
+            "This suggests the deck's assumptions may be robust to these "
+            "specific stress types, though other scenarios may reveal vulnerabilities."
         ),
     )
 
 
 def _apply_underperform_stress(
     deck: MetaDeck,
-    card_db: dict[str, dict[str, Any]],  # noqa: ARG001  Required by factory interface
+    card_db: dict[str, dict[str, Any]],  # noqa: ARG001
     baseline: DeckAssumptionSet,
     scenario: StressScenario,
 ) -> StressResult:
     """
-    Simulate key cards underperforming (drawing less frequently).
+    Explore what happens if key cards are drawn less frequently.
 
-    This stress type reduces the effective copy count of targeted cards,
-    simulating games where you don't draw your key pieces.
+    This examines the belief that the deck will find its key pieces.
     """
     affected: list[StressedAssumption] = []
+    violated_belief = ""
+    violation_explanation = ""
 
     # Find key card assumptions
     key_assumption = next(
@@ -184,35 +187,46 @@ def _apply_underperform_stress(
         None,
     )
 
-    if key_assumption and isinstance(key_assumption.current_value, int):
+    if key_assumption and isinstance(key_assumption.observed_value, int):
         # Reduce effective key card count based on intensity
-        reduction = int(key_assumption.current_value * scenario.intensity * 0.5)
-        new_value = max(0, key_assumption.current_value - reduction)
+        reduction = int(key_assumption.observed_value * scenario.intensity * 0.5)
+        new_value = max(0, key_assumption.observed_value - reduction)
 
         new_health = _recalculate_health(
-            new_value, key_assumption.expected_range[0], key_assumption.expected_range[1]
+            new_value, key_assumption.typical_range[0], key_assumption.typical_range[1]
         )
+
+        # Determine if this violates the belief
+        belief_violated = new_health == AssumptionHealth.CRITICAL
+        violation_reason = ""
+        if belief_violated:
+            violation_reason = (
+                f"The belief that the deck has enough redundant key cards "
+                f"fails because effective 4x cards drops to {new_value}, "
+                f"below what the archetype typically requires."
+            )
+            violated_belief = key_assumption.name
+            violation_explanation = violation_reason
 
         affected.append(
             StressedAssumption(
                 name=key_assumption.name,
-                original_value=key_assumption.current_value,
+                original_value=key_assumption.observed_value,
                 stressed_value=new_value,
                 original_health=key_assumption.health.value,
                 stressed_health=new_health.value,
                 change_explanation=(
-                    f"With key cards underperforming, effective 4x cards "
-                    f"drops from {key_assumption.current_value} to {new_value}."
+                    f"If key cards underperform, effective 4x cards "
+                    f"would drop from {key_assumption.observed_value} to {new_value}."
                 ),
+                belief_violated=belief_violated,
+                violation_reason=violation_reason,
             )
         )
 
     # Calculate new fragility
     original_fragility = baseline.overall_fragility
     stressed_fragility = _calculate_stressed_fragility(baseline, affected, scenario.intensity)
-    breaking_point = stressed_fragility > 0.7
-
-    recommendations = _generate_underperform_recommendations(baseline, scenario)
 
     return StressResult(
         deck_name=deck.name,
@@ -220,31 +234,33 @@ def _apply_underperform_stress(
         original_fragility=original_fragility,
         stressed_fragility=stressed_fragility,
         affected_assumptions=affected,
-        breaking_point=breaking_point,
-        explanation=_generate_stress_explanation(
-            "underperformance", scenario.target,
-            original_fragility, stressed_fragility, breaking_point
+        assumption_violated=bool(violated_belief),
+        violated_belief=violated_belief,
+        violation_explanation=violation_explanation,
+        exploration_summary=_generate_exploration_summary(
+            "key card underperformance", scenario.target, affected, violated_belief
         ),
-        recommendations=recommendations,
+        considerations=_generate_underperform_considerations(baseline, scenario),
     )
 
 
 def _apply_missing_stress(
     deck: MetaDeck,
-    card_db: dict[str, dict[str, Any]],  # noqa: ARG001  Required by factory interface
+    card_db: dict[str, dict[str, Any]],  # noqa: ARG001
     baseline: DeckAssumptionSet,
     scenario: StressScenario,
 ) -> StressResult:
     """
-    Simulate missing copies of a card (can't draw or removed).
+    Explore what happens if a card is unavailable.
 
-    This tests what happens if a key card isn't in your deck or
-    you never draw it.
+    This examines the belief that specific cards will be in the deck
+    and drawable.
     """
     affected: list[StressedAssumption] = []
+    violated_belief = ""
+    violation_explanation = ""
 
     target_card = scenario.target
-    copies_to_remove = int(4 * scenario.intensity)  # At 100%, remove all 4 copies
 
     # Check if target is a key card
     must_draw = next(
@@ -254,52 +270,79 @@ def _apply_missing_stress(
 
     is_key_card = (
         must_draw
-        and isinstance(must_draw.current_value, list)
-        and target_card in must_draw.current_value
+        and isinstance(must_draw.observed_value, list)
+        and target_card in must_draw.observed_value
     )
 
     if is_key_card and must_draw:
-        new_value = [c for c in must_draw.current_value if c != target_card]
+        new_value = [c for c in must_draw.observed_value if c != target_card]
+        health_degraded = len(new_value) < len(must_draw.observed_value)
+
+        # This belief is violated if the card was critical
+        belief_violated = health_degraded and scenario.intensity >= 0.75
+        violation_reason = ""
+        if belief_violated:
+            violation_reason = (
+                f"The belief that '{target_card}' will be available fails. "
+                f"This deck relies on drawing this card, and without it, "
+                f"the deck's core strategy may not function as intended."
+            )
+            violated_belief = "Must-Draw Cards"
+            violation_explanation = violation_reason
+
         affected.append(
             StressedAssumption(
                 name="Must-Draw Cards",
-                original_value=must_draw.current_value,
+                original_value=must_draw.observed_value,
                 stressed_value=new_value,
                 original_health=must_draw.health.value,
-                stressed_health=(
-                    "warning" if len(new_value) < len(must_draw.current_value)
-                    else "healthy"
-                ),
+                stressed_health="warning" if health_degraded else "healthy",
                 change_explanation=(
-                    f"Removing {copies_to_remove} copies of {target_card} "
-                    f"eliminates it from must-draw cards."
+                    f"If '{target_card}' is unavailable, the deck loses "
+                    f"a card it was built around finding."
                 ),
+                belief_violated=belief_violated,
+                violation_reason=violation_reason,
             )
         )
 
-    # Also affect key card dependency count
+    # Also examine key card dependency count
     key_dep = next(
         (a for a in baseline.assumptions if a.name == "Key Card Dependency"),
         None,
     )
 
-    if key_dep and isinstance(key_dep.current_value, int):
-        new_count = max(0, key_dep.current_value - 1) if is_key_card else key_dep.current_value
-        if new_count != key_dep.current_value:
+    if key_dep and isinstance(key_dep.observed_value, int):
+        new_count = max(0, key_dep.observed_value - 1) if is_key_card else key_dep.observed_value
+        if new_count != key_dep.observed_value:
             new_health = _recalculate_health(
-                new_count, key_dep.expected_range[0], key_dep.expected_range[1]
+                new_count, key_dep.typical_range[0], key_dep.typical_range[1]
             )
+
+            belief_violated_here = new_health == AssumptionHealth.CRITICAL
+            violation_reason_here = ""
+            if belief_violated_here and not violated_belief:
+                violation_reason_here = (
+                    f"The belief that the deck has enough key cards fails. "
+                    f"Losing '{target_card}' reduces 4x card count to {new_count}, "
+                    f"which may be insufficient for consistent draws."
+                )
+                violated_belief = key_dep.name
+                violation_explanation = violation_reason_here
+
             affected.append(
                 StressedAssumption(
                     name=key_dep.name,
-                    original_value=key_dep.current_value,
+                    original_value=key_dep.observed_value,
                     stressed_value=new_count,
                     original_health=key_dep.health.value,
                     stressed_health=new_health.value,
                     change_explanation=(
-                        f"Losing {target_card} reduces 4x card count from "
-                        f"{key_dep.current_value} to {new_count}."
+                        f"Without '{target_card}', 4x card count drops from "
+                        f"{key_dep.observed_value} to {new_count}."
                     ),
+                    belief_violated=belief_violated_here,
+                    violation_reason=violation_reason_here,
                 )
             )
 
@@ -307,7 +350,6 @@ def _apply_missing_stress(
     stressed_fragility = _calculate_stressed_fragility(
         baseline, affected, scenario.intensity, is_key_card
     )
-    breaking_point = stressed_fragility > 0.7 or (is_key_card and scenario.intensity >= 0.75)
 
     return StressResult(
         deck_name=deck.name,
@@ -315,26 +357,30 @@ def _apply_missing_stress(
         original_fragility=original_fragility,
         stressed_fragility=stressed_fragility,
         affected_assumptions=affected,
-        breaking_point=breaking_point,
-        explanation=_generate_stress_explanation(
-            "card removal", target_card, original_fragility, stressed_fragility, breaking_point
+        assumption_violated=bool(violated_belief),
+        violated_belief=violated_belief,
+        violation_explanation=violation_explanation,
+        exploration_summary=_generate_exploration_summary(
+            f"'{target_card}' unavailability", target_card, affected, violated_belief
         ),
-        recommendations=_generate_missing_recommendations(target_card, is_key_card),
+        considerations=_generate_missing_considerations(target_card, is_key_card),
     )
 
 
 def _apply_delayed_stress(
     deck: MetaDeck,
-    card_db: dict[str, dict[str, Any]],  # noqa: ARG001  Required by factory interface
+    card_db: dict[str, dict[str, Any]],  # noqa: ARG001
     baseline: DeckAssumptionSet,
     scenario: StressScenario,
 ) -> StressResult:
     """
-    Simulate delayed mana development (mana screw, missing land drops).
+    Explore what happens if mana development is delayed.
 
-    This tests what happens when the deck's curve is effectively shifted up.
+    This examines beliefs about hitting land drops and casting spells on curve.
     """
     affected: list[StressedAssumption] = []
+    violated_belief = ""
+    violation_explanation = ""
 
     # Find mana curve assumptions
     cmc_assumption = next(
@@ -342,61 +388,86 @@ def _apply_delayed_stress(
         None,
     )
 
-    if cmc_assumption and isinstance(cmc_assumption.current_value, int | float):
+    if cmc_assumption and isinstance(cmc_assumption.observed_value, int | float):
         # Increase effective CMC (simulating delayed development)
-        cmc_increase = cmc_assumption.current_value * scenario.intensity * 0.3
-        new_cmc = cmc_assumption.current_value + cmc_increase
+        cmc_increase = cmc_assumption.observed_value * scenario.intensity * 0.3
+        new_cmc = cmc_assumption.observed_value + cmc_increase
 
         new_health = _recalculate_health(
-            new_cmc, cmc_assumption.expected_range[0], cmc_assumption.expected_range[1]
+            new_cmc, cmc_assumption.typical_range[0], cmc_assumption.typical_range[1]
         )
+
+        belief_violated = new_health == AssumptionHealth.CRITICAL
+        violation_reason = ""
+        if belief_violated:
+            violation_reason = (
+                f"The belief that the deck can cast spells on curve fails. "
+                f"With delayed mana, effective mana value rises to {new_cmc:.2f}, "
+                f"meaning the deck cannot execute its game plan on time."
+            )
+            violated_belief = cmc_assumption.name
+            violation_explanation = violation_reason
 
         affected.append(
             StressedAssumption(
                 name=cmc_assumption.name,
-                original_value=round(cmc_assumption.current_value, 2),
+                original_value=round(cmc_assumption.observed_value, 2),
                 stressed_value=round(new_cmc, 2),
                 original_health=cmc_assumption.health.value,
                 stressed_health=new_health.value,
                 change_explanation=(
-                    f"Delayed development increases effective mana value "
-                    f"from {cmc_assumption.current_value:.2f} to {new_cmc:.2f}."
+                    f"If mana is delayed, effective mana value rises "
+                    f"from {cmc_assumption.observed_value:.2f} to {new_cmc:.2f}."
                 ),
+                belief_violated=belief_violated,
+                violation_reason=violation_reason,
             )
         )
 
-    # Also affect land count perception
+    # Also examine land count perception
     land_assumption = next(
         (a for a in baseline.assumptions if a.name == "Land Count"),
         None,
     )
 
-    if land_assumption and isinstance(land_assumption.current_value, int | float):
+    if land_assumption and isinstance(land_assumption.observed_value, int | float):
         # Effectively fewer lands (simulating screw)
-        land_reduction = int(land_assumption.current_value * scenario.intensity * 0.2)
-        new_lands = land_assumption.current_value - land_reduction
+        land_reduction = int(land_assumption.observed_value * scenario.intensity * 0.2)
+        new_lands = land_assumption.observed_value - land_reduction
 
         new_health = _recalculate_health(
-            new_lands, land_assumption.expected_range[0], land_assumption.expected_range[1]
+            new_lands, land_assumption.typical_range[0], land_assumption.typical_range[1]
         )
+
+        belief_violated_here = new_health == AssumptionHealth.CRITICAL
+        violation_reason_here = ""
+        if belief_violated_here and not violated_belief:
+            violation_reason_here = (
+                f"The belief that the deck has enough mana sources fails. "
+                f"With effective lands dropping to {new_lands}, "
+                f"the deck cannot reliably cast its spells."
+            )
+            violated_belief = land_assumption.name
+            violation_explanation = violation_reason_here
 
         affected.append(
             StressedAssumption(
                 name=land_assumption.name,
-                original_value=land_assumption.current_value,
+                original_value=land_assumption.observed_value,
                 stressed_value=new_lands,
                 original_health=land_assumption.health.value,
                 stressed_health=new_health.value,
                 change_explanation=(
-                    f"Mana problems reduce effective lands "
-                    f"from {land_assumption.current_value} to {new_lands}."
+                    f"If mana is problematic, effective lands drop "
+                    f"from {land_assumption.observed_value} to {new_lands}."
                 ),
+                belief_violated=belief_violated_here,
+                violation_reason=violation_reason_here,
             )
         )
 
     original_fragility = baseline.overall_fragility
     stressed_fragility = _calculate_stressed_fragility(baseline, affected, scenario.intensity)
-    breaking_point = stressed_fragility > 0.7
 
     return StressResult(
         deck_name=deck.name,
@@ -404,27 +475,30 @@ def _apply_delayed_stress(
         original_fragility=original_fragility,
         stressed_fragility=stressed_fragility,
         affected_assumptions=affected,
-        breaking_point=breaking_point,
-        explanation=_generate_stress_explanation(
-            "mana delays", "mana development",
-            original_fragility, stressed_fragility, breaking_point
+        assumption_violated=bool(violated_belief),
+        violated_belief=violated_belief,
+        violation_explanation=violation_explanation,
+        exploration_summary=_generate_exploration_summary(
+            "mana delays", "mana development", affected, violated_belief
         ),
-        recommendations=_generate_delayed_recommendations(baseline),
+        considerations=_generate_delayed_considerations(baseline),
     )
 
 
 def _apply_hostile_meta_stress(
     deck: MetaDeck,
-    card_db: dict[str, dict[str, Any]],  # noqa: ARG001  Required by factory interface
+    card_db: dict[str, dict[str, Any]],  # noqa: ARG001
     baseline: DeckAssumptionSet,
     scenario: StressScenario,
 ) -> StressResult:
     """
-    Simulate facing more interaction than expected.
+    Explore what happens when facing more interaction than expected.
 
-    This tests what happens when opponents have more answers.
+    This examines beliefs about threat resolution and protection.
     """
     affected: list[StressedAssumption] = []
+    violated_belief = ""
+    violation_explanation = ""
 
     # Find interaction timing assumptions
     removal_assumption = next(
@@ -432,29 +506,43 @@ def _apply_hostile_meta_stress(
         None,
     )
 
-    # In a hostile meta, your interaction matters more but may be outpaced
-    if removal_assumption and isinstance(removal_assumption.current_value, int | float):
+    # In a hostile meta, your interaction may be insufficient
+    if removal_assumption and isinstance(removal_assumption.observed_value, int | float):
         # Hostile meta means you need MORE interaction
-        needed_increase = int(removal_assumption.current_value * scenario.intensity * 0.5)
-        effective_shortfall = needed_increase  # You're this many short
+        needed_increase = int(removal_assumption.observed_value * scenario.intensity * 0.5)
+        effective_shortfall = needed_increase
 
         new_health = (
-            AssumptionHealth.WARNING if effective_shortfall > 2
-            else AssumptionHealth.CRITICAL if effective_shortfall > 4
+            AssumptionHealth.CRITICAL if effective_shortfall > 4
+            else AssumptionHealth.WARNING if effective_shortfall > 2
             else removal_assumption.health
         )
+
+        belief_violated = new_health == AssumptionHealth.CRITICAL
+        violation_reason = ""
+        if belief_violated:
+            violation_reason = (
+                f"The belief that the deck has enough interaction fails. "
+                f"Against a hostile meta with more threats to answer, "
+                f"the current {removal_assumption.observed_value} removal spells "
+                f"may be insufficient by {needed_increase} or more."
+            )
+            violated_belief = removal_assumption.name
+            violation_explanation = violation_reason
 
         affected.append(
             StressedAssumption(
                 name=removal_assumption.name,
-                original_value=removal_assumption.current_value,
-                stressed_value=removal_assumption.current_value,  # Value same, context changed
+                original_value=removal_assumption.observed_value,
+                stressed_value=removal_assumption.observed_value,  # Value same, context changed
                 original_health=removal_assumption.health.value,
                 stressed_health=new_health.value,
                 change_explanation=(
-                    f"In a hostile meta, you may need {needed_increase} more "
-                    f"interaction spells than the current {removal_assumption.current_value}."
+                    f"In a hostile meta, the deck may need {needed_increase} more "
+                    f"interaction spells than the current {removal_assumption.observed_value}."
                 ),
+                belief_violated=belief_violated,
+                violation_reason=violation_reason,
             )
         )
 
@@ -473,23 +561,35 @@ def _apply_hostile_meta_stress(
             else AssumptionHealth.CRITICAL
         )
 
+        belief_violated_here = stressed_health == AssumptionHealth.CRITICAL
+        violation_reason_here = ""
+        if belief_violated_here and not violated_belief:
+            violation_reason_here = (
+                f"The belief that key cards will resolve fails. "
+                f"In a hostile meta, opponents have more answers, "
+                f"and the deck's reliance on specific cards becomes a liability."
+            )
+            violated_belief = key_assumption.name
+            violation_explanation = violation_reason_here
+
         affected.append(
             StressedAssumption(
                 name=key_assumption.name,
-                original_value=key_assumption.current_value,
-                stressed_value=key_assumption.current_value,
+                original_value=key_assumption.observed_value,
+                stressed_value=key_assumption.observed_value,
                 original_health=original_health.value,
                 stressed_health=stressed_health.value,
                 change_explanation=(
-                    "Reliance on key cards becomes riskier when opponents "
-                    "have more answers available."
+                    "In a hostile meta, relying on key cards becomes riskier "
+                    "as opponents are more likely to have answers."
                 ),
+                belief_violated=belief_violated_here,
+                violation_reason=violation_reason_here,
             )
         )
 
     original_fragility = baseline.overall_fragility
     stressed_fragility = _calculate_stressed_fragility(baseline, affected, scenario.intensity)
-    breaking_point = stressed_fragility > 0.7
 
     return StressResult(
         deck_name=deck.name,
@@ -497,31 +597,32 @@ def _apply_hostile_meta_stress(
         original_fragility=original_fragility,
         stressed_fragility=stressed_fragility,
         affected_assumptions=affected,
-        breaking_point=breaking_point,
-        explanation=_generate_stress_explanation(
-            "hostile meta", "opponent interaction",
-            original_fragility, stressed_fragility, breaking_point
+        assumption_violated=bool(violated_belief),
+        violated_belief=violated_belief,
+        violation_explanation=violation_explanation,
+        exploration_summary=_generate_exploration_summary(
+            "hostile meta", "opponent interaction", affected, violated_belief
         ),
-        recommendations=_generate_hostile_meta_recommendations(baseline),
+        considerations=_generate_hostile_meta_considerations(baseline),
     )
 
 
 def _recalculate_health(
-    value: float, min_expected: float, max_expected: float
+    value: float, min_typical: float, max_typical: float
 ) -> AssumptionHealth:
-    """Recalculate health for a new value."""
-    if min_expected <= value <= max_expected:
+    """Recalculate health for a new value against typical range."""
+    if min_typical <= value <= max_typical:
         return AssumptionHealth.HEALTHY
 
-    if value < min_expected:
+    if value < min_typical:
         deviation = (
-            (min_expected - value) / min_expected if min_expected > 0
-            else abs(min_expected - value)
+            (min_typical - value) / min_typical if min_typical > 0
+            else abs(min_typical - value)
         )
     else:
         deviation = (
-            (value - max_expected) / max_expected if max_expected > 0
-            else abs(value - max_expected)
+            (value - max_typical) / max_typical if max_typical > 0
+            else abs(value - max_typical)
         )
 
     if deviation > 0.25:
@@ -558,46 +659,44 @@ def _calculate_stressed_fragility(
     return min(1.0, base_fragility + increase)
 
 
-def _generate_stress_explanation(
+def _generate_exploration_summary(
     stress_name: str,
     target: str,
-    original: float,
-    stressed: float,
-    breaking: bool,
+    affected: list[StressedAssumption],
+    violated_belief: str,
 ) -> str:
-    """Generate human-readable stress explanation."""
-    change = stressed - original
-    direction = "increased" if change > 0 else "decreased"
-
-    if breaking:
+    """Generate human-readable exploration summary."""
+    if violated_belief:
         return (
-            f"Stress testing {stress_name} on {target} caused significant fragility. "
-            f"Fragility {direction} from {original:.0%} to {stressed:.0%}. "
-            f"This represents a breaking point - the deck may struggle to function."
+            f"Given {stress_name} affecting {target}, "
+            f"the belief '{violated_belief}' can no longer be reasonably held. "
+            f"This suggests the deck depends on this assumption more than others."
         )
 
-    if abs(change) < 0.05:
-        return (
-            f"Stress testing {stress_name} on {target} had minimal impact. "
-            f"Fragility stayed near {original:.0%}. The deck is resilient to this stress."
-        )
+    if affected:
+        changes = [a.name for a in affected if a.stressed_health != a.original_health]
+        if changes:
+            return (
+                f"Exploring {stress_name} on {target} reveals that "
+                f"{', '.join(changes)} would be affected. "
+                f"However, no beliefs are clearly invalidated under this scenario."
+            )
 
     return (
-        f"Stress testing {stress_name} on {target} {direction} fragility "
-        f"from {original:.0%} to {stressed:.0%}. "
-        f"The deck shows moderate vulnerability to this scenario."
+        f"Exploring {stress_name} on {target} suggests minimal impact "
+        f"on the deck's core assumptions under this scenario."
     )
 
 
-def _generate_underperform_recommendations(
+def _generate_underperform_considerations(
     baseline: DeckAssumptionSet, scenario: StressScenario
 ) -> list[str]:
-    """Generate recommendations for underperformance stress."""
-    recommendations = []
+    """Generate considerations for underperformance exploration."""
+    considerations = []
 
     if scenario.intensity > 0.5:
-        recommendations.append(
-            "Consider adding redundancy - backup cards that serve similar roles."
+        considerations.append(
+            "Consider: Are there backup cards that could serve similar roles?"
         )
 
     draw_assumption = next(
@@ -605,64 +704,64 @@ def _generate_underperform_recommendations(
         None,
     )
     if draw_assumption and draw_assumption.health != AssumptionHealth.HEALTHY:
-        recommendations.append(
-            "More card draw/selection helps find key pieces more consistently."
+        considerations.append(
+            "Consider: Would more card draw help find key pieces more consistently?"
         )
 
-    recommendations.append(
-        "Test which key cards the deck can function without, and which are critical."
+    considerations.append(
+        "Consider: Which key cards could the deck function without, and which are critical?"
     )
 
-    return recommendations
+    return considerations
 
 
-def _generate_missing_recommendations(target_card: str, is_key_card: bool) -> list[str]:
-    """Generate recommendations for missing card stress."""
-    recommendations = []
+def _generate_missing_considerations(target_card: str, is_key_card: bool) -> list[str]:
+    """Generate considerations for missing card exploration."""
+    considerations = []
 
     if is_key_card:
-        recommendations.append(
-            f"'{target_card}' is critical. Consider backup options or protection."
+        considerations.append(
+            f"Consider: Are there functional replacements for '{target_card}' in the format?"
         )
-        recommendations.append(
-            "Evaluate if there are functional replacements in the format."
+        considerations.append(
+            "Consider: Could the deck be built to be less dependent on this specific card?"
         )
     else:
-        recommendations.append(
-            f"'{target_card}' removal has limited impact - the slot may be flexible."
+        considerations.append(
+            f"'{target_card}' removal had limited impact - this slot may be flexible."
         )
 
-    return recommendations
+    return considerations
 
 
-def _generate_delayed_recommendations(baseline: DeckAssumptionSet) -> list[str]:
-    """Generate recommendations for mana delay stress."""
-    recommendations = []
+def _generate_delayed_considerations(baseline: DeckAssumptionSet) -> list[str]:
+    """Generate considerations for mana delay exploration."""
+    considerations = []
 
     land_assumption = next(
         (a for a in baseline.assumptions if a.name == "Land Count"),
         None,
     )
 
-    if land_assumption and isinstance(land_assumption.current_value, int | float):
-        if land_assumption.current_value < land_assumption.expected_range[0]:
-            recommendations.append(
-                "Consider adding more lands to reduce mana screw frequency."
+    if land_assumption and isinstance(land_assumption.observed_value, int | float):
+        if land_assumption.observed_value < land_assumption.typical_range[0]:
+            considerations.append(
+                "Consider: Would adding more lands reduce mana screw frequency?"
             )
-        recommendations.append(
-            "Evaluate your mana curve - can you reduce average mana value?"
+        considerations.append(
+            "Consider: Could the mana curve be lowered to reduce land dependency?"
         )
 
-    recommendations.append(
-        "Test mulliganing more aggressively for land-heavy hands."
+    considerations.append(
+        "Consider: How aggressively should you mulligan for land-heavy hands?"
     )
 
-    return recommendations
+    return considerations
 
 
-def _generate_hostile_meta_recommendations(baseline: DeckAssumptionSet) -> list[str]:
-    """Generate recommendations for hostile meta stress."""
-    recommendations = []
+def _generate_hostile_meta_considerations(baseline: DeckAssumptionSet) -> list[str]:
+    """Generate considerations for hostile meta exploration."""
+    considerations = []
 
     removal_assumption = next(
         (a for a in baseline.assumptions if a.name == "Removal Density"),
@@ -671,18 +770,18 @@ def _generate_hostile_meta_recommendations(baseline: DeckAssumptionSet) -> list[
 
     if (
         removal_assumption
-        and isinstance(removal_assumption.current_value, int | float)
-        and removal_assumption.current_value < 6
+        and isinstance(removal_assumption.observed_value, int | float)
+        and removal_assumption.observed_value < 6
     ):
-        recommendations.append(
-            "Consider more interaction in the maindeck or sideboard."
+        considerations.append(
+            "Consider: Would more interaction in the maindeck or sideboard help?"
         )
 
-    recommendations.append(
-        "Evaluate threats with built-in protection (hexproof, ward, etc.)."
+    considerations.append(
+        "Consider: Are there threats with built-in protection (hexproof, ward, etc.)?"
     )
-    recommendations.append(
-        "Consider faster gameplans to get under interaction-heavy decks."
+    considerations.append(
+        "Consider: Could a faster game plan get under interaction-heavy opponents?"
     )
 
-    return recommendations
+    return considerations

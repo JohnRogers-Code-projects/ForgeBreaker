@@ -109,6 +109,9 @@ export interface StressScenarioRequest {
   intensity?: number
 }
 
+/**
+ * How a belief changes under a hypothetical stress scenario.
+ */
 export interface StressedAssumption {
   name: string
   original_value: unknown
@@ -116,8 +119,16 @@ export interface StressedAssumption {
   original_health: string
   stressed_health: string
   change_explanation: string
+  belief_violated: boolean
+  violation_reason: string
 }
 
+/**
+ * Result of exploring a stress scenario with a deck.
+ *
+ * A breaking point occurs when a specific belief can no longer be held,
+ * NOT when a numeric threshold is crossed.
+ */
 export interface StressResultResponse {
   deck_name: string
   stress_type: string
@@ -127,18 +138,36 @@ export interface StressResultResponse {
   stressed_fragility: number
   fragility_change: number
   affected_assumptions: StressedAssumption[]
-  breaking_point: boolean
-  explanation: string
-  recommendations: string[]
+  // Semantic fields
+  assumption_violated: boolean
+  violated_belief: string
+  violation_explanation: string
+  exploration_summary: string
+  considerations: string[]
+  // Backwards compatibility
+  breaking_point: boolean  // Deprecated: use assumption_violated
+  explanation: string  // Deprecated: use exploration_summary
+  recommendations: string[]  // Deprecated: use considerations
 }
 
+/**
+ * Analysis of which belief fails first under stress.
+ *
+ * This identifies the most vulnerable assumption, not a prediction of failure.
+ */
 export interface BreakingPointResponse {
   deck_name: string
-  weakest_assumption: string
-  breaking_intensity: number
-  resilience_score: number
-  breaking_scenario: StressScenarioRequest | null
-  explanation: string
+  // Semantic fields
+  most_vulnerable_belief: string
+  stress_threshold: number
+  failing_scenario: StressScenarioRequest | null
+  exploration_insight: string
+  // Backwards compatibility
+  weakest_assumption: string  // Deprecated: use most_vulnerable_belief
+  breaking_intensity: number  // Deprecated: use stress_threshold
+  resilience_score: number  // Deprecated: removed concept
+  breaking_scenario: StressScenarioRequest | null  // Deprecated: use failing_scenario
+  explanation: string  // Deprecated: use exploration_insight
 }
 
 class ApiClient {

@@ -17,22 +17,22 @@ const STRESS_TYPES: { value: StressType; label: string; description: string }[] 
   {
     value: 'underperform',
     label: 'Underperform',
-    description: 'Key cards appear less frequently',
+    description: 'What if key cards appear less frequently?',
   },
   {
     value: 'missing',
     label: 'Missing Card',
-    description: 'Remove copies of a specific card',
+    description: 'What if a specific card is unavailable?',
   },
   {
     value: 'delayed',
     label: 'Mana Problems',
-    description: 'Simulate mana screw/flood',
+    description: 'What if mana development is delayed?',
   },
   {
     value: 'hostile_meta',
     label: 'Hostile Meta',
-    description: 'Face more opponent interaction',
+    description: 'What if opponents have more answers?',
   },
 ]
 
@@ -62,8 +62,8 @@ export function StressPanel({
     const mustDrawAssumption = assumptions.assumptions.find(
       (a) => a.name === 'Must-Draw Cards'
     )
-    if (mustDrawAssumption && Array.isArray(mustDrawAssumption.current_value)) {
-      keyCards.push(...mustDrawAssumption.current_value)
+    if (mustDrawAssumption && Array.isArray(mustDrawAssumption.observed_value)) {
+      keyCards.push(...mustDrawAssumption.observed_value)
     }
   }
 
@@ -76,7 +76,7 @@ export function StressPanel({
       })
       setResult(response)
     } catch (error) {
-      console.error('Stress test failed:', error)
+      console.error('Stress exploration failed:', error)
     }
   }
 
@@ -94,13 +94,13 @@ export function StressPanel({
           className="text-lg font-semibold"
           style={{ color: 'var(--color-text-primary)' }}
         >
-          Stress Testing
+          Explore Hypothetical Scenarios
         </h3>
         <p
           className="text-sm mt-1"
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          Test how your deck handles adversity
+          Examine which beliefs might not hold under certain conditions
         </p>
       </div>
 
@@ -112,7 +112,7 @@ export function StressPanel({
             className="block text-sm font-medium mb-2"
             style={{ color: 'var(--color-text-primary)' }}
           >
-            Stress Type
+            Scenario Type
           </label>
           <div className="grid grid-cols-2 gap-2">
             {STRESS_TYPES.map((type) => (
@@ -217,7 +217,7 @@ export function StressPanel({
             opacity: stressMutation.isPending ? 0.6 : 1,
           }}
         >
-          {stressMutation.isPending ? 'Running...' : 'Run Stress Test'}
+          {stressMutation.isPending ? 'Exploring...' : 'Explore Scenario'}
         </button>
       </div>
 
@@ -228,8 +228,7 @@ export function StressPanel({
 }
 
 function StressResult({ result }: { result: StressResultResponse }) {
-  const fragilityChange = result.stressed_fragility - result.original_fragility
-  const isWorse = fragilityChange > 0
+  const hasViolation = result.assumption_violated
 
   return (
     <div
@@ -240,17 +239,13 @@ function StressResult({ result }: { result: StressResultResponse }) {
       <div
         className="p-3 rounded"
         style={{
-          backgroundColor: result.breaking_point
+          backgroundColor: hasViolation
             ? 'rgba(239, 68, 68, 0.1)'
-            : isWorse
-              ? 'rgba(234, 179, 8, 0.1)'
-              : 'rgba(34, 197, 94, 0.1)',
+            : 'rgba(34, 197, 94, 0.1)',
           border: `1px solid ${
-            result.breaking_point
+            hasViolation
               ? 'rgba(239, 68, 68, 0.3)'
-              : isWorse
-                ? 'rgba(234, 179, 8, 0.3)'
-                : 'rgba(34, 197, 94, 0.3)'
+              : 'rgba(34, 197, 94, 0.3)'
           }`,
         }}
       >
@@ -259,99 +254,43 @@ function StressResult({ result }: { result: StressResultResponse }) {
             className="font-medium"
             style={{ color: 'var(--color-text-primary)' }}
           >
-            {result.breaking_point ? 'Breaking Point Reached' : 'Stress Applied'}
+            {hasViolation ? 'Belief Invalidated' : 'Beliefs Hold'}
           </span>
-          <span
-            className={`text-sm px-2 py-0.5 rounded ${
-              result.breaking_point
-                ? 'bg-red-500/20 text-red-400'
-                : isWorse
-                  ? 'bg-yellow-500/20 text-yellow-400'
-                  : 'bg-green-500/20 text-green-400'
-            }`}
-          >
-            {fragilityChange > 0 ? '+' : ''}
-            {Math.round(fragilityChange * 100)}% fragility
-          </span>
+          {hasViolation && result.violated_belief && (
+            <span className="text-sm px-2 py-0.5 rounded bg-red-500/20 text-red-400">
+              {result.violated_belief}
+            </span>
+          )}
         </div>
         <p
           className="text-sm leading-relaxed"
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          {result.explanation}
+          {result.exploration_summary}
         </p>
-      </div>
-
-      {/* Before/After Comparison */}
-      <div className="grid grid-cols-2 gap-4">
-        <div
-          className="p-3 rounded"
-          style={{
-            backgroundColor: 'var(--color-bg-elevated)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <div
-            className="text-xs font-medium mb-1"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            Before Stress
-          </div>
-          <div
-            className="text-2xl font-bold"
-            style={{ color: 'var(--color-text-primary)' }}
-          >
-            {Math.round(result.original_fragility * 100)}%
-          </div>
-          <div
-            className="text-xs"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            fragility
-          </div>
-        </div>
-        <div
-          className="p-3 rounded"
-          style={{
-            backgroundColor: 'var(--color-bg-elevated)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <div
-            className="text-xs font-medium mb-1"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            After Stress
-          </div>
-          <div
-            className="text-2xl font-bold"
+        {hasViolation && result.violation_explanation && (
+          <p
+            className="text-sm leading-relaxed mt-2 pt-2 border-t"
             style={{
-              color: result.breaking_point
-                ? '#ef4444'
-                : isWorse
-                  ? '#eab308'
-                  : '#22c55e',
+              color: 'var(--color-text-secondary)',
+              borderColor: hasViolation
+                ? 'rgba(239, 68, 68, 0.2)'
+                : 'var(--color-border)',
             }}
           >
-            {Math.round(result.stressed_fragility * 100)}%
-          </div>
-          <div
-            className="text-xs"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            fragility
-          </div>
-        </div>
+            {result.violation_explanation}
+          </p>
+        )}
       </div>
 
-      {/* Affected Assumptions */}
+      {/* Affected Beliefs */}
       {result.affected_assumptions.length > 0 && (
         <div>
           <h4
             className="text-sm font-medium mb-2"
             style={{ color: 'var(--color-text-primary)' }}
           >
-            Affected Assumptions
+            Affected Beliefs
           </h4>
           <div className="space-y-2">
             {result.affected_assumptions.map((assumption, idx) => (
@@ -359,8 +298,14 @@ function StressResult({ result }: { result: StressResultResponse }) {
                 key={idx}
                 className="p-2 rounded text-sm"
                 style={{
-                  backgroundColor: 'var(--color-bg-elevated)',
-                  border: '1px solid var(--color-border)',
+                  backgroundColor: assumption.belief_violated
+                    ? 'rgba(239, 68, 68, 0.05)'
+                    : 'var(--color-bg-elevated)',
+                  border: `1px solid ${
+                    assumption.belief_violated
+                      ? 'rgba(239, 68, 68, 0.2)'
+                      : 'var(--color-border)'
+                  }`,
                 }}
               >
                 <div className="flex items-center justify-between mb-1">
@@ -369,21 +314,27 @@ function StressResult({ result }: { result: StressResultResponse }) {
                   </span>
                   <span
                     className={`text-xs px-1.5 py-0.5 rounded ${
-                      assumption.stressed_health === 'critical'
+                      assumption.belief_violated
                         ? 'bg-red-500/20 text-red-400'
-                        : assumption.stressed_health === 'warning'
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-green-500/20 text-green-400'
+                        : assumption.stressed_health === 'critical'
+                          ? 'bg-red-500/20 text-red-400'
+                          : assumption.stressed_health === 'warning'
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-green-500/20 text-green-400'
                     }`}
                   >
-                    {assumption.original_health} → {assumption.stressed_health}
+                    {assumption.belief_violated
+                      ? 'violated'
+                      : `${assumption.original_health} → ${assumption.stressed_health}`}
                   </span>
                 </div>
                 <p
                   className="text-xs"
                   style={{ color: 'var(--color-text-secondary)' }}
                 >
-                  {assumption.change_explanation}
+                  {assumption.belief_violated && assumption.violation_reason
+                    ? assumption.violation_reason
+                    : assumption.change_explanation}
                 </p>
               </div>
             ))}
@@ -391,24 +342,24 @@ function StressResult({ result }: { result: StressResultResponse }) {
         </div>
       )}
 
-      {/* Recommendations */}
-      {result.recommendations.length > 0 && (
+      {/* Considerations */}
+      {result.considerations.length > 0 && (
         <div>
           <h4
             className="text-sm font-medium mb-2"
             style={{ color: 'var(--color-text-primary)' }}
           >
-            Recommendations
+            Things to Consider
           </h4>
           <ul className="space-y-1">
-            {result.recommendations.map((rec, idx) => (
+            {result.considerations.map((consideration, idx) => (
               <li
                 key={idx}
                 className="text-sm flex items-start gap-2"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
                 <span style={{ color: 'var(--color-primary)' }}>•</span>
-                {rec}
+                {consideration}
               </li>
             ))}
           </ul>
