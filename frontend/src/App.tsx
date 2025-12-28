@@ -103,7 +103,7 @@ function App() {
             isBackendConnected={!!health}
           />
         ) : (
-          <div className="h-[calc(100vh-140px)]">
+          <div className="h-[calc(100vh-120px)]">
             {/* Chat Tab */}
             {activeTab === 'chat' && (
               <ChatAdvisor userId={userId} />
