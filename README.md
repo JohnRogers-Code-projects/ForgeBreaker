@@ -1,65 +1,69 @@
 # ForgeBreaker
 
-MTG Arena collection manager that suggests decks based on owned cards, using ML-powered recommendations.
+A thinking tool for MTG Arena players who want to understand their decks, not just build them.
 
-## Why ForgeBreaker?
+## Who This Is For
 
-Building competitive decks in MTG Arena is frustrating:
+ForgeBreaker is for **deck brewers and budget-conscious players** who ask questions like:
 
-- **Wildcards are precious** - You don't want to spend rare wildcards on a deck you can't finish
-- **Meta decks require cards you don't own** - Most deck sites assume you have everything
-- **No visibility into what's buildable** - Arena doesn't show which meta decks match your collection
+- "What assumptions does my deck rely on?"
+- "Which parts of my deck are fragile?"
+- "What happens if this card or interaction underperforms?"
+- "Why does this deck feel inconsistent?"
 
-ForgeBreaker solves this by analyzing your collection and ranking meta decks by how close you are to completing them. It uses ML-powered recommendations to surface decks you can actually build, not just what's theoretically best.
+If you want to understand *why* a deck works (or doesn't), ForgeBreaker helps you explore that.
 
-## Features
+## What ForgeBreaker Does
 
-- Import your Arena collection via text export
-- Browse competitive meta decks from MTGGoldfish
-- See how close you are to completing each deck
-- **ML-powered deck recommendations** blending collection analysis with [MLForge scoring](docs/MODEL_CARD.md)
-- Get recommendations based on your wildcard budget
-- AI-powered deck advice via Claude with MCP tool calling
+**Surface Assumptions** — Every deck relies on implicit assumptions: mana curve expectations, key card dependencies, interaction timing. ForgeBreaker makes these visible and inspectable.
 
-## Architecture
+**Stress Test Ideas** — Intentionally stress specific assumptions to see what breaks first. Simulate underperformance, missing pieces, or variance scenarios.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed system design.
+**Explain Outcomes** — Every result comes with an explanation of what assumptions drove it and explicit acknowledgment of uncertainty.
 
-ForgeBreaker integrates with MLForge for ML-based deck recommendations:
+**Collection-Aware Recommendations** — See which meta decks you're closest to completing and understand the wildcard investment required.
+
+## What ForgeBreaker Is NOT
+
+ForgeBreaker is deliberately limited in scope:
+
+- **Not a meta aggregation platform** — We don't compete with Untapped, MTGGoldfish analytics, or similar services
+- **Not a ladder optimizer** — We don't claim to tell you what deck will climb fastest
+- **Not a winrate predictor** — Our ML-assisted recommendations have known limitations (see [Model Card](docs/MODEL_CARD.md))
+- **Not a replacement for playtesting** — Understanding assumptions doesn't replace actually playing games
+
+ForgeBreaker helps you think about your deck. It doesn't think for you.
+
+## How It Works
 
 ```
-User Query → ForgeBreaker API
-                ↓
-         Load Collection (PostgreSQL)
-                ↓
-         Load Meta Decks (MTGGoldfish)
-                ↓
-         Extract Features (DeckFeatures)
-                ↓
-         Call MLForge API (batch scoring)
-                ↓
-         Blend ML Score (60%) + Heuristics (40%)
-                ↓
-         Return Ranked Recommendations
+Your Collection → ForgeBreaker
+                      ↓
+              Analyze Deck Assumptions
+              (mana curve, key cards, interaction timing)
+                      ↓
+              Surface Fragility
+              (what breaks under stress)
+                      ↓
+              Explain with Uncertainty
+              ("Based on assumptions X, Y... results may vary if Z")
 ```
 
-**Data Flow:**
-1. User requests deck recommendations via `/chat` endpoint (using MCP tool calling)
-2. ForgeBreaker loads collection and available meta decks from database
-3. For each deck, extracts ML features: completion %, wildcard costs, archetype, win rate
-4. Sends batch feature request to MLForge (`/api/v1/score/batch`)
-5. MLForge returns ML confidence scores for each deck
-6. Blends ML score (weighted by confidence) with heuristic score
-7. Returns ranked deck recommendations with `scoring_method: "ml_blended"`
+### Core Features
 
-**Graceful Fallback:** If MLForge is unavailable, automatically falls back to heuristic-only scoring.
+- **Import Collection** — Paste your Arena export to track owned cards
+- **Browse Meta Decks** — See competitive decks from MTGGoldfish with completion percentages
+- **Calculate Distance** — Understand wildcard costs to complete any deck
+- **AI Deck Advisor** — Chat with Claude about your collection and deck ideas (with MCP tool calling)
+- **Assumption Analysis** — See what your deck relies on (coming soon)
+- **Stress Testing** — Simulate "what if" scenarios (coming soon)
 
 ## Tech Stack
 
 - **Backend**: Python 3.11+ / FastAPI
-- **Frontend**: React 18 / TypeScript / Tailwind CSS
+- **Frontend**: React 19 / TypeScript / Tailwind CSS
 - **Database**: PostgreSQL (async via SQLAlchemy 2.0)
-- **ML**: MLForge API for recommendation scoring
+- **ML**: MLForge API for recommendation scoring (see [Model Card](docs/MODEL_CARD.md))
 - **LLM**: Claude API with MCP tool calling
 
 ## Development
@@ -84,22 +88,11 @@ pip install -e ".[dev]"
 export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/forgebreaker"
 export ANTHROPIC_API_KEY="your-api-key"
 
-# Run linting
+# Run linting and tests
 ruff check .
 ruff format --check .
-
-# Run type checking
 mypy forgebreaker
-
-# Run tests (requires 70% coverage)
 pytest
-
-# Expected output:
-# ============================= test session starts ==============================
-# collected 422 items
-# ...
-# ============================= 422 passed in 45.23s ==============================
-# TOTAL                                                        83%
 
 # Start dev server
 uvicorn forgebreaker.main:app --reload
@@ -109,144 +102,22 @@ uvicorn forgebreaker.main:app --reload
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
-
-# Build for production
-npm run build
 ```
 
 ## API Endpoints
 
-### Health
-
-- `GET /health` - Health check
-- `GET /ready` - Readiness check
-
-### Collection
-
-- `GET /collection/{user_id}` - Get user's collection stats
-- `POST /collection/{user_id}` - Import Arena collection (body: `{"arena_export": "..."}`)
-
-### Decks
-
-- `GET /decks/{format}` - List meta decks for format
-- `GET /decks/{format}/{deck_name}` - Get specific deck
-
-### Distance
-
-- `GET /distance/{user_id}/{format}/{deck_name}` - Calculate collection distance to deck
-
-### Chat
-
-- `POST /chat/` - Send chat message (body: `{"user_id": "...", "messages": [...]}`)
-
-## Example API Usage
-
-### Import a Collection
-
-```bash
-curl -X POST http://localhost:8000/collection/user123/import \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "4 Lightning Bolt\n4 Monastery Swiftspear\n20 Mountain",
-    "format": "auto"
-  }'
-```
-
-Response:
-```json
-{
-  "user_id": "user123",
-  "cards_imported": 3,
-  "total_cards": 28,
-  "cards": {
-    "Lightning Bolt": 4,
-    "Monastery Swiftspear": 4,
-    "Mountain": 20
-  }
-}
-```
-
-### Get Meta Decks
-
-```bash
-curl http://localhost:8000/decks/standard
-```
-
-Response (cards/sideboard truncated for brevity):
-```json
-{
-  "format": "standard",
-  "decks": [
-    {
-      "name": "Mono Red Aggro",
-      "archetype": "Aggro",
-      "format": "standard",
-      "cards": {"Monastery Swiftspear": 4, "Play with Fire": 4},
-      "sideboard": {"Roiling Vortex": 2},
-      "win_rate": 0.54,
-      "meta_share": 0.12,
-      "source_url": "https://mtggoldfish.com/..."
-    }
-  ],
-  "count": 1
-}
-```
-
-### Calculate Deck Distance
-
-```bash
-curl http://localhost:8000/distance/user123/standard/Mono%20Red%20Aggro
-```
-
-Response:
-```json
-{
-  "deck_name": "Mono Red Aggro",
-  "deck_format": "standard",
-  "owned_cards": 24,
-  "missing_cards": 16,
-  "total_cards": 40,
-  "completion_percentage": 0.6,
-  "is_complete": false,
-  "wildcard_cost": {
-    "common": 0,
-    "uncommon": 4,
-    "rare": 8,
-    "mythic": 4,
-    "total": 16
-  }
-}
-```
-
-### Chat with Claude
-
-```bash
-curl -X POST http://localhost:8000/chat/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "user123",
-    "messages": [{"role": "user", "content": "What meta decks can I build?"}]
-  }'
-```
-
-Response:
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": "Based on your collection, here are the meta decks you're closest to completing..."
-  },
-  "tool_calls": [
-    {"name": "get_deck_recommendations", "input": {"format": "standard"}}
-  ]
-}
-```
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Health check |
+| `/collection/{user_id}` | GET | Get user's collection stats |
+| `/collection/{user_id}/import` | POST | Import Arena collection |
+| `/collection/{user_id}/stats` | GET | Collection statistics |
+| `/decks/{format}` | GET | List meta decks for format |
+| `/decks/{format}/{deck_name}` | GET | Get specific deck |
+| `/distance/{user_id}/{format}/{deck_name}` | GET | Calculate deck distance |
+| `/chat/` | POST | Chat with Claude |
 
 ## Environment Variables
 
@@ -259,30 +130,19 @@ Response:
 
 ## Deployment
 
-The app is configured for Railway deployment:
-
-- `railway.toml` - Railway configuration
-- `Procfile` - Process definition
-- `runtime.txt` - Python version
-
-### Deploy to Railway
-
-1. Connect your GitHub repo to Railway
-2. Set environment variables in Railway dashboard
-3. Deploy
+Configured for Railway deployment. See `railway.toml` and `Procfile`.
 
 ## Project Structure
 
 ```
 forgebreaker/
 ├── api/           # FastAPI routers
-├── analysis/      # Deck distance/ranking
+├── analysis/      # Deck distance/ranking/assumptions
 ├── db/            # Database operations
-├── jobs/          # Scheduled jobs
 ├── mcp/           # MCP tool definitions
-├── ml/            # ML feature engineering
 ├── models/        # Domain models
-├── parsers/       # Arena export/Scryfall parsers
+├── parsers/       # Arena export parsers
+├── services/      # Deck building, synergies
 └── scrapers/      # MTGGoldfish scraper
 
 frontend/
