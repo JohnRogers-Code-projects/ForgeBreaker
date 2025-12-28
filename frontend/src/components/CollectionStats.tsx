@@ -88,6 +88,9 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
             </p>
           </div>
         </div>
+        <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+          These counts include all copies from your imported collection. Unique count reflects distinct card names.
+        </p>
       </div>
 
       {/* Rarity Breakdown */}
@@ -111,6 +114,9 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
             />
           )
         })}
+        <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Rarity determines wildcard cost when crafting. Distribution shown is based on imported data.
+        </p>
       </div>
 
       {/* Color Breakdown */}
@@ -135,6 +141,9 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
             />
           )
         })}
+        <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Color distribution reflects your imported collection. This does not account for mana costs or deck requirements.
+        </p>
       </div>
 
       {/* Type Breakdown */}
@@ -156,6 +165,9 @@ export function CollectionStats({ stats }: CollectionStatsProps) {
             />
           ))}
         </div>
+        <p className="text-xs mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Type distribution reflects card types in your collection. Types are extracted from card data.
+        </p>
       </div>
     </div>
   )

@@ -1,9 +1,9 @@
-import { useState } from 'react'
 import type { DeckResponse, DistanceResponse } from '../api/client'
 import { useDeckDistance, useDeckAssumptions } from '../hooks/useDecks'
 import { AssumptionPanel } from './AssumptionPanel'
 import { StressPanel } from './StressPanel'
 import { BreakingPointFinder } from './BreakingPointFinder'
+import { ExplanationBlock } from './ExplanationBlock'
 
 interface DeckDetailProps {
   deck: DeckResponse
@@ -207,6 +207,26 @@ export function DeckDetail({ deck, userId, onClose }: DeckDetailProps) {
         {isComplete && (
           <div className="mt-3 text-sm text-green-600 font-medium">
             You have all the cards to build this deck!
+          </div>
+        )}
+
+        {/* Completion Explanation */}
+        {distance && (
+          <div className="mt-4">
+            <ExplanationBlock
+              summary={
+                isComplete
+                  ? "All required cards for this deck are present in your collection."
+                  : `Your collection is missing ${distance.missing_cards} cards for this deck.`
+              }
+              conditional={
+                !isComplete
+                  ? "If you acquire cards through packs or rewards, this count changes."
+                  : undefined
+              }
+              assumptions={['Key Card Dependency', 'Mana Curve']}
+              compact
+            />
           </div>
         )}
       </div>
