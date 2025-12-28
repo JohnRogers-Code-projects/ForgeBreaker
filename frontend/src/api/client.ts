@@ -75,6 +75,32 @@ export interface ChatResponse {
   tool_calls: Array<{ name: string; input: Record<string, unknown> }>
 }
 
+/**
+ * A player belief about what a deck needs to function.
+ *
+ * These are hypotheses for players to examine, not system predictions.
+ * The observed_value is a fact about the decklist; typical_range is
+ * what convention suggests for the archetype (not truth).
+ */
+export interface DeckAssumption {
+  name: string
+  category: string
+  description: string
+  observed_value: unknown  // What the decklist shows (fact)
+  typical_range: [number, number]  // Convention for archetype (not prescription)
+  health: 'healthy' | 'warning' | 'critical'
+  explanation: string
+  adjustable: boolean
+}
+
+export interface AssumptionSetResponse {
+  deck_name: string
+  archetype: string
+  assumptions: DeckAssumption[]
+  overall_fragility: number
+  fragility_explanation: string
+}
+
 class ApiClient {
   private baseUrl: string
 
@@ -157,6 +183,17 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, messages }),
     })
+  }
+
+  // Assumptions
+  async getDeckAssumptions(
+    userId: string,
+    format: string,
+    deckName: string
+  ): Promise<AssumptionSetResponse> {
+    return this.request(
+      `/assumptions/${userId}/${format}/${encodeURIComponent(deckName)}`
+    )
   }
 }
 
