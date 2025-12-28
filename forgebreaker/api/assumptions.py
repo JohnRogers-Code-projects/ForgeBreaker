@@ -1,7 +1,9 @@
 """
 Assumptions API endpoint.
 
-Extracts and returns deck assumptions for analysis.
+Surfaces deck characteristics for players to examine their beliefs about
+what the deck needs to function. These are hypotheses for inspection,
+not system predictions or performance guarantees.
 """
 
 from typing import Annotated, Any
@@ -10,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from forgebreaker.analysis.assumptions import extract_assumptions
+from forgebreaker.analysis.assumptions import surface_assumptions
 from forgebreaker.db import get_meta_deck, meta_deck_to_model
 from forgebreaker.db.database import get_session
 from forgebreaker.services.card_database import get_card_database
@@ -19,20 +21,30 @@ router = APIRouter(prefix="/assumptions", tags=["assumptions"])
 
 
 class AssumptionResponse(BaseModel):
-    """A single deck assumption."""
+    """
+    A single belief about what a deck needs to function.
+
+    observed_value is a fact about the decklist.
+    typical_range reflects convention for the archetype (not a prescription).
+    """
 
     name: str
     category: str
     description: str
-    current_value: Any
-    expected_range: list[float]
+    observed_value: Any  # What the decklist shows (fact)
+    typical_range: list[float]  # Convention for archetype (not prescription)
     health: str
     explanation: str
     adjustable: bool
 
 
 class AssumptionSetResponse(BaseModel):
-    """Complete set of assumptions for a deck."""
+    """
+    A collection of beliefs about what a deck needs to function.
+
+    These are hypotheses for players to examine, not system predictions.
+    The fragility score indicates deviation from convention, not likelihood of failure.
+    """
 
     deck_name: str
     archetype: str
@@ -49,15 +61,16 @@ async def get_deck_assumptions(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AssumptionSetResponse:
     """
-    Get assumptions for a meta deck.
+    Surface observable characteristics of a deck for player examination.
 
-    Analyzes the deck to identify implicit assumptions about:
-    - Mana curve expectations
-    - Draw consistency
-    - Key card dependencies
-    - Interaction timing
+    Returns beliefs to examine about:
+    - Mana curve (what the deck appears to need)
+    - Draw consistency (how the deck finds cards)
+    - Key card dependencies (what the deck relies on)
+    - Interaction timing (when the deck needs to respond)
 
-    Returns a fragility score indicating how assumption-dependent the deck is.
+    The fragility score indicates deviation from convention, NOT prediction of failure.
+    Deviating from convention may be intentional and correct.
     """
     # Get the deck
     db_deck = await get_meta_deck(session, deck_name, format_name)
@@ -76,8 +89,8 @@ async def get_deck_assumptions(
         # Provide analysis with empty card db (limited info)
         card_db = {}
 
-    # Extract assumptions
-    assumption_set = extract_assumptions(deck, card_db)
+    # Surface assumptions for player examination
+    assumption_set = surface_assumptions(deck, card_db)
 
     # Build response
     return AssumptionSetResponse(
@@ -88,8 +101,8 @@ async def get_deck_assumptions(
                 name=a.name,
                 category=a.category.value,
                 description=a.description,
-                current_value=a.current_value,
-                expected_range=list(a.expected_range),
+                observed_value=a.observed_value,
+                typical_range=list(a.typical_range),
                 health=a.health.value,
                 explanation=a.explanation,
                 adjustable=a.adjustable,

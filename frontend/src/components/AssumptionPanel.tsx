@@ -99,10 +99,18 @@ export function AssumptionPanel({ data, isLoading }: AssumptionPanelProps) {
           <FragilityBadge fragility={data.overall_fragility} />
         </div>
         <p
-          className="text-sm leading-relaxed"
+          className="text-sm leading-relaxed mb-2"
           style={{ color: 'var(--color-text-secondary)' }}
         >
           {data.fragility_explanation}
+        </p>
+        <p
+          className="text-xs leading-relaxed"
+          style={{ color: 'var(--color-text-secondary)', opacity: 0.8 }}
+        >
+          These are beliefs about what your deck needs to function—hypotheses for you to examine,
+          not predictions. Typical ranges reflect convention, not prescriptions. Deviating
+          from convention may be intentional and correct.
         </p>
       </div>
 
@@ -279,15 +287,15 @@ function AssumptionCard({ assumption }: { assumption: DeckAssumption }) {
           >
             {assumption.explanation}
           </p>
-          {typeof assumption.current_value !== 'undefined' &&
-            assumption.expected_range[0] !== 0 &&
-            assumption.expected_range[1] !== 0 && (
+          {typeof assumption.observed_value !== 'undefined' &&
+            assumption.typical_range[0] !== 0 &&
+            assumption.typical_range[1] !== 0 && (
               <div className="flex items-center gap-4 text-xs">
                 <span style={{ color: 'var(--color-text-secondary)' }}>
-                  Current: <strong>{formatValue(assumption.current_value)}</strong>
+                  Observed: <strong>{formatValue(assumption.observed_value)}</strong>
                 </span>
                 <span style={{ color: 'var(--color-text-secondary)' }}>
-                  Expected: {assumption.expected_range[0]} - {assumption.expected_range[1]}
+                  Typical for archetype: {assumption.typical_range[0]} - {assumption.typical_range[1]}
                 </span>
               </div>
             )}

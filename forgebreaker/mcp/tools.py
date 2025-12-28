@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from forgebreaker.analysis.assumptions import extract_assumptions
+from forgebreaker.analysis.assumptions import surface_assumptions
 from forgebreaker.analysis.distance import calculate_deck_distance
 from forgebreaker.analysis.ranker import rank_decks, rank_decks_with_ml
 from forgebreaker.db import (
@@ -994,8 +994,8 @@ async def get_deck_assumptions_tool(
     deck = meta_deck_to_model(db_deck)
     card_db = _get_card_db_safe()
 
-    # Extract assumptions
-    assumption_set = extract_assumptions(deck, card_db)
+    # Surface assumptions for player examination
+    assumption_set = surface_assumptions(deck, card_db)
 
     return {
         "deck_name": assumption_set.deck_name,
@@ -1007,8 +1007,8 @@ async def get_deck_assumptions_tool(
                 "name": a.name,
                 "category": a.category.value,
                 "description": a.description,
-                "current_value": a.current_value,
-                "expected_range": list(a.expected_range),
+                "observed_value": a.observed_value,
+                "typical_range": list(a.typical_range),
                 "health": a.health.value,
                 "explanation": a.explanation,
                 "adjustable": a.adjustable,

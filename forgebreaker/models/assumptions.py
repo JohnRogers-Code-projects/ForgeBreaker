@@ -1,9 +1,12 @@
 """
 Deck assumption models.
 
-Represents the implicit assumptions a deck relies on for success.
-These assumptions become visible and inspectable to help players
-understand deck fragility.
+Assumptions are PLAYER BELIEFS about what a deck needs to function.
+They are hypotheses, not facts. They may be wrong.
+
+The system surfaces characteristics of a decklist to help players
+articulate and examine their own beliefs. It does not claim these
+beliefs are correct or that the deck will perform as expected.
 """
 
 from dataclasses import dataclass, field
@@ -21,56 +24,69 @@ class AssumptionCategory(str, Enum):
 
 
 class AssumptionHealth(str, Enum):
-    """Health status of an assumption."""
+    """
+    How a belief compares to conventional baselines.
 
-    HEALTHY = "healthy"  # Within expected range
-    WARNING = "warning"  # Slightly outside expectations
-    CRITICAL = "critical"  # Significantly outside expectations
+    This is NOT a prediction of performance. It indicates whether
+    the deck's characteristics match common patterns for the archetype.
+    Deviating from convention may be intentional and correct.
+    """
+
+    HEALTHY = "healthy"  # Matches conventional baseline
+    WARNING = "warning"  # Differs from convention
+    CRITICAL = "critical"  # Differs significantly from convention
 
 
 @dataclass
 class DeckAssumption:
     """
-    A single assumption a deck relies on.
+    A single belief about what a deck needs to function.
+
+    This represents a hypothesis the player holds (or should consider)
+    about how the deck operates. It is not a prediction or guarantee.
 
     Attributes:
-        name: Human-readable name (e.g., "Mana Curve Expectation")
+        name: Human-readable name for this belief
         category: Type of assumption
-        description: Explanation of what this assumption means
-        current_value: The actual computed value for this deck
-        expected_range: Tuple of (min, max) for healthy values
-        health: Whether this assumption is in a healthy state
-        explanation: Why this matters for the deck
-        adjustable: Whether the user can modify this in stress testing
+        description: What this belief is about
+        observed_value: What the decklist shows (a fact about the list)
+        typical_range: What convention suggests for this archetype (not truth)
+        health: How this compares to convention (not quality)
+        explanation: Why a player might care about this
+        adjustable: Whether this can be stress-tested
     """
 
     name: str
     category: AssumptionCategory
     description: str
-    current_value: Any
-    expected_range: tuple[float, float]
+    observed_value: Any  # Renamed from current_value - this is observable fact
+    typical_range: tuple[float, float]  # Renamed from expected_range - convention, not truth
     health: AssumptionHealth
     explanation: str
     adjustable: bool = True
 
-    def is_within_range(self) -> bool:
-        """Check if current value is within expected range."""
-        if isinstance(self.current_value, int | float):
-            return self.expected_range[0] <= self.current_value <= self.expected_range[1]
+    def is_within_typical(self) -> bool:
+        """Check if observed value is within typical range for the archetype."""
+        if isinstance(self.observed_value, int | float):
+            return self.typical_range[0] <= self.observed_value <= self.typical_range[1]
         return True
 
 
 @dataclass
 class DeckAssumptionSet:
     """
-    Complete set of assumptions for a deck.
+    A collection of beliefs about what a deck needs to function.
+
+    These are hypotheses for the player to examine, not system predictions.
+    The fragility score indicates how much the deck deviates from convention,
+    NOT how likely it is to fail.
 
     Attributes:
-        deck_name: Name of the deck being analyzed
-        archetype: Detected archetype (aggro, midrange, control, combo)
-        assumptions: List of individual assumptions
-        overall_fragility: 0-1 score indicating how assumption-dependent the deck is
-        fragility_explanation: Why the deck has this fragility level
+        deck_name: Name of the deck
+        archetype: Archetype used for baseline comparison
+        assumptions: List of individual beliefs to examine
+        overall_fragility: How much the deck deviates from convention (0-1)
+        fragility_explanation: What the deviation means (not a prediction)
     """
 
     deck_name: str
@@ -84,7 +100,7 @@ class DeckAssumptionSet:
         return [a for a in self.assumptions if a.category == category]
 
     def get_warnings(self) -> list[DeckAssumption]:
-        """Get assumptions that are in warning or critical state."""
+        """Get assumptions that differ from convention."""
         return [
             a
             for a in self.assumptions
@@ -92,7 +108,7 @@ class DeckAssumptionSet:
         ]
 
     def get_critical(self) -> list[DeckAssumption]:
-        """Get assumptions in critical state."""
+        """Get assumptions that differ significantly from convention."""
         return [a for a in self.assumptions if a.health == AssumptionHealth.CRITICAL]
 
     def to_dict(self) -> dict[str, Any]:
@@ -105,8 +121,8 @@ class DeckAssumptionSet:
                     "name": a.name,
                     "category": a.category.value,
                     "description": a.description,
-                    "current_value": a.current_value,
-                    "expected_range": list(a.expected_range),
+                    "observed_value": a.observed_value,
+                    "typical_range": list(a.typical_range),
                     "health": a.health.value,
                     "explanation": a.explanation,
                     "adjustable": a.adjustable,

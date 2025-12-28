@@ -1,8 +1,12 @@
 """
-Deck assumption extraction and analysis.
+Deck assumption surfacing.
 
-Analyzes a deck to identify the implicit assumptions it relies on,
-making them explicit and inspectable for players.
+This module surfaces observable characteristics of a decklist to help
+players articulate their beliefs about how the deck should function.
+
+IMPORTANT: This does NOT infer player intent or predict performance.
+It provides starting points for players to examine and may use wrong.
+The "typical ranges" are conventional baselines, not prescriptions.
 """
 
 from typing import Any
@@ -16,78 +20,94 @@ from forgebreaker.models.assumptions import (
 from forgebreaker.models.deck import MetaDeck
 from forgebreaker.services.deck_builder import ARCHETYPE_CURVES, ARCHETYPE_ROLE_TARGETS
 
-# Expected mana curve distributions by archetype (average CMC)
-ARCHETYPE_EXPECTED_CMC: dict[str, tuple[float, float]] = {
+# Conventional baselines for comparison (NOT prescriptions)
+# These represent common patterns, not requirements.
+# Deviating from these may be intentional and correct.
+
+TYPICAL_CMC_BY_ARCHETYPE: dict[str, tuple[float, float]] = {
     "aggro": (1.5, 2.3),
     "midrange": (2.5, 3.5),
     "control": (3.0, 4.0),
     "combo": (2.0, 3.5),
 }
 
-# Expected land counts by archetype
-ARCHETYPE_EXPECTED_LANDS: dict[str, tuple[int, int]] = {
+TYPICAL_LANDS_BY_ARCHETYPE: dict[str, tuple[int, int]] = {
     "aggro": (20, 23),
     "midrange": (23, 26),
     "control": (25, 28),
     "combo": (22, 26),
 }
 
-# Draw/selection density expectations (cards per 60)
-ARCHETYPE_DRAW_DENSITY: dict[str, tuple[int, int]] = {
+TYPICAL_DRAW_DENSITY_BY_ARCHETYPE: dict[str, tuple[int, int]] = {
     "aggro": (0, 4),
     "midrange": (2, 6),
     "control": (4, 10),
     "combo": (4, 10),
 }
 
+# Disclaimer text for assumptions
+BASELINE_DISCLAIMER = (
+    "Typical ranges are based on common patterns for this archetype. "
+    "Your deck may intentionally differ. This is not a recommendation."
+)
 
-def extract_assumptions(
+
+def surface_assumptions(
     deck: MetaDeck,
     card_db: dict[str, dict[str, Any]],
 ) -> DeckAssumptionSet:
     """
-    Extract all assumptions from a deck.
+    Surface observable characteristics of a deck for player examination.
+
+    This does NOT infer what the player believes or predict how the deck
+    will perform. It provides starting points for the player to examine
+    their own assumptions about the deck.
 
     Args:
-        deck: The deck to analyze
+        deck: The deck to examine
         card_db: Scryfall card database for card properties
 
     Returns:
-        DeckAssumptionSet with all identified assumptions
+        DeckAssumptionSet with observable characteristics and conventional baselines
     """
+    # Default to midrange if archetype unknown (this default is visible to the user)
     archetype = deck.archetype.lower() if deck.archetype else "midrange"
     if archetype not in ARCHETYPE_CURVES:
         archetype = "midrange"
 
     assumptions: list[DeckAssumption] = []
 
-    # Extract each category of assumptions
-    assumptions.extend(_extract_mana_curve_assumptions(deck, card_db, archetype))
-    assumptions.extend(_extract_draw_consistency_assumptions(deck, card_db, archetype))
-    assumptions.extend(_extract_key_card_assumptions(deck, card_db))
-    assumptions.extend(_extract_interaction_timing_assumptions(deck, card_db, archetype))
+    # Surface each category of characteristics
+    assumptions.extend(_surface_mana_curve_beliefs(deck, card_db, archetype))
+    assumptions.extend(_surface_draw_consistency_beliefs(deck, card_db, archetype))
+    assumptions.extend(_surface_key_card_beliefs(deck, card_db))
+    assumptions.extend(_surface_interaction_beliefs(deck, card_db, archetype))
 
-    # Calculate overall fragility
-    fragility, fragility_explanation = _calculate_fragility(assumptions, archetype)
+    # Calculate deviation from convention (NOT quality or likelihood of success)
+    deviation, deviation_explanation = _calculate_deviation(assumptions, archetype)
 
     return DeckAssumptionSet(
         deck_name=deck.name,
         archetype=archetype,
         assumptions=assumptions,
-        overall_fragility=fragility,
-        fragility_explanation=fragility_explanation,
+        overall_fragility=deviation,
+        fragility_explanation=deviation_explanation,
     )
 
 
-def _extract_mana_curve_assumptions(
+# Keep old name as alias for backwards compatibility
+extract_assumptions = surface_assumptions
+
+
+def _surface_mana_curve_beliefs(
     deck: MetaDeck,
     card_db: dict[str, dict[str, Any]],
     archetype: str,
 ) -> list[DeckAssumption]:
-    """Extract mana curve related assumptions."""
+    """Surface mana curve characteristics for player examination."""
     assumptions: list[DeckAssumption] = []
 
-    # Calculate actual mana curve
+    # Observe the decklist
     curve: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
     total_cmc = 0.0
     nonland_count = 0
@@ -109,57 +129,67 @@ def _extract_mana_curve_assumptions(
 
     avg_cmc = total_cmc / nonland_count if nonland_count > 0 else 2.5
 
-    # Mana curve assumption
-    expected_cmc = ARCHETYPE_EXPECTED_CMC.get(archetype, (2.0, 3.5))
-    cmc_health = _calculate_health(avg_cmc, expected_cmc[0], expected_cmc[1])
+    # Compare to conventional baseline (not prescription)
+    typical_cmc = TYPICAL_CMC_BY_ARCHETYPE.get(archetype, (2.0, 3.5))
+    comparison = _compare_to_baseline(avg_cmc, typical_cmc[0], typical_cmc[1])
 
     assumptions.append(
         DeckAssumption(
-            name="Average Mana Value",
+            name="Mana Curve Belief",
             category=AssumptionCategory.MANA_CURVE,
-            description=f"This deck's average mana value is {avg_cmc:.2f}",
-            current_value=round(avg_cmc, 2),
-            expected_range=expected_cmc,
-            health=cmc_health,
-            explanation=_explain_cmc(avg_cmc, expected_cmc, archetype),
+            description=(
+                f"This deck's average mana value is {avg_cmc:.2f}. "
+                f"You believe this curve will function for your game plan."
+            ),
+            observed_value=round(avg_cmc, 2),
+            typical_range=typical_cmc,
+            health=comparison,
+            explanation=_explain_cmc_belief(avg_cmc, typical_cmc, archetype),
             adjustable=True,
         )
     )
 
-    # Land count assumption
-    expected_lands = ARCHETYPE_EXPECTED_LANDS.get(archetype, (23, 26))
-    land_health = _calculate_health(land_count, expected_lands[0], expected_lands[1])
+    # Land count observation
+    typical_lands = TYPICAL_LANDS_BY_ARCHETYPE.get(archetype, (23, 26))
+    land_comparison = _compare_to_baseline(land_count, typical_lands[0], typical_lands[1])
 
     assumptions.append(
         DeckAssumption(
-            name="Land Count",
+            name="Land Count Belief",
             category=AssumptionCategory.MANA_CURVE,
-            description=f"This deck runs {land_count} lands",
-            current_value=land_count,
-            expected_range=(float(expected_lands[0]), float(expected_lands[1])),
-            health=land_health,
-            explanation=_explain_lands(land_count, expected_lands, archetype),
+            description=(
+                f"This deck runs {land_count} lands. "
+                f"You believe this is enough to cast your spells on curve."
+            ),
+            observed_value=land_count,
+            typical_range=(float(typical_lands[0]), float(typical_lands[1])),
+            health=land_comparison,
+            explanation=_explain_land_belief(land_count, typical_lands, archetype),
             adjustable=True,
         )
     )
 
-    # Low curve density (1-2 drops for aggro)
+    # Early game density for aggro
     if archetype == "aggro":
         low_curve = curve.get(1, 0) + curve.get(2, 0)
-        expected_low = (18, 24)  # Aggro needs lots of cheap threats
-        low_health = _calculate_health(low_curve, expected_low[0], expected_low[1])
+        typical_low = (18, 24)
+        low_comparison = _compare_to_baseline(low_curve, typical_low[0], typical_low[1])
 
         assumptions.append(
             DeckAssumption(
-                name="Early Game Density",
+                name="Early Pressure Belief",
                 category=AssumptionCategory.MANA_CURVE,
-                description=f"This deck has {low_curve} cards at 1-2 mana",
-                current_value=low_curve,
-                expected_range=(float(expected_low[0]), float(expected_low[1])),
-                health=low_health,
+                description=(
+                    f"This deck has {low_curve} cards at 1-2 mana. "
+                    f"You believe this provides enough early pressure."
+                ),
+                observed_value=low_curve,
+                typical_range=(float(typical_low[0]), float(typical_low[1])),
+                health=low_comparison,
                 explanation=(
-                    "Aggro decks typically need 18-24 cards at 1-2 mana "
-                    f"to establish early pressure. This deck has {low_curve}."
+                    f"Aggro decks often run 18-24 cards at 1-2 mana. "
+                    f"This deck has {low_curve}. Whether this is enough depends on "
+                    f"your game plan and meta expectations."
                 ),
                 adjustable=False,
             )
@@ -168,15 +198,14 @@ def _extract_mana_curve_assumptions(
     return assumptions
 
 
-def _extract_draw_consistency_assumptions(
+def _surface_draw_consistency_beliefs(
     deck: MetaDeck,
     card_db: dict[str, dict[str, Any]],
     archetype: str,
 ) -> list[DeckAssumption]:
-    """Extract card draw and selection assumptions."""
+    """Surface card draw characteristics for player examination."""
     assumptions: list[DeckAssumption] = []
 
-    # Count draw/selection effects
     draw_keywords = ["draw a card", "draw two", "draw three", "scry", "look at the top", "surveil"]
     draw_count = 0
 
@@ -187,18 +216,21 @@ def _extract_draw_consistency_assumptions(
         if any(kw in oracle for kw in draw_keywords):
             draw_count += qty
 
-    expected_draw = ARCHETYPE_DRAW_DENSITY.get(archetype, (2, 6))
-    draw_health = _calculate_health(draw_count, expected_draw[0], expected_draw[1])
+    typical_draw = TYPICAL_DRAW_DENSITY_BY_ARCHETYPE.get(archetype, (2, 6))
+    comparison = _compare_to_baseline(draw_count, typical_draw[0], typical_draw[1])
 
     assumptions.append(
         DeckAssumption(
-            name="Card Selection Density",
+            name="Card Flow Belief",
             category=AssumptionCategory.DRAW_CONSISTENCY,
-            description=f"This deck has {draw_count} cards with draw/selection effects",
-            current_value=draw_count,
-            expected_range=(float(expected_draw[0]), float(expected_draw[1])),
-            health=draw_health,
-            explanation=_explain_draw(draw_count, expected_draw, archetype),
+            description=(
+                f"This deck has {draw_count} cards with draw/selection effects. "
+                f"You believe this provides adequate card flow for your game plan."
+            ),
+            observed_value=draw_count,
+            typical_range=(float(typical_draw[0]), float(typical_draw[1])),
+            health=comparison,
+            explanation=_explain_draw_belief(draw_count, typical_draw, archetype),
             adjustable=True,
         )
     )
@@ -206,14 +238,14 @@ def _extract_draw_consistency_assumptions(
     return assumptions
 
 
-def _extract_key_card_assumptions(
+def _surface_key_card_beliefs(
     deck: MetaDeck,
     card_db: dict[str, dict[str, Any]],
 ) -> list[DeckAssumption]:
-    """Extract key card dependency assumptions."""
+    """Surface key card dependencies for player examination."""
     assumptions: list[DeckAssumption] = []
 
-    # Find 4x cards (likely key cards)
+    # Find 4x cards (player has chosen to maximize these)
     four_ofs = [name for name, qty in deck.cards.items() if qty == 4]
 
     # Filter to non-lands
@@ -225,42 +257,48 @@ def _extract_key_card_assumptions(
 
     key_card_count = len(key_cards)
 
-    # Having many 4x cards means high dependency on specific cards
-    expected_range = (4.0, 10.0)  # 4-10 four-ofs is typical
-    dependency_health = AssumptionHealth.HEALTHY
+    # This is player choice, not optimization
+    typical_range = (4.0, 10.0)
+    comparison = AssumptionHealth.HEALTHY
     if key_card_count > 12 or key_card_count < 3:
-        dependency_health = AssumptionHealth.WARNING
+        comparison = AssumptionHealth.WARNING
 
     assumptions.append(
         DeckAssumption(
             name="Key Card Dependency",
             category=AssumptionCategory.KEY_CARDS,
-            description=f"This deck has {key_card_count} cards that appear as 4x copies",
-            current_value=key_card_count,
-            expected_range=expected_range,
-            health=dependency_health,
+            description=(
+                f"You're running {key_card_count} cards as 4x copies. "
+                f"You believe these are essential to your strategy."
+            ),
+            observed_value=key_card_count,
+            typical_range=typical_range,
+            health=comparison,
             explanation=(
-                f"Cards run as 4x are typically essential to your strategy. "
-                f"This deck depends on {key_card_count} such cards: "
-                f"{', '.join(key_cards[:5])}{'...' if len(key_cards) > 5 else ''}."
+                f"Cards run as 4x are typically cards you want to draw every game. "
+                f"This deck maximizes {key_card_count} cards: "
+                f"{', '.join(key_cards[:5])}{'...' if len(key_cards) > 5 else ''}. "
+                f"If these underperform, the deck's effectiveness may suffer."
             ),
             adjustable=False,
         )
     )
 
-    # Check for unique effects (cards that do something no other card in the deck does)
     if key_cards:
         assumptions.append(
             DeckAssumption(
-                name="Must-Draw Cards",
+                name="Must-Draw Belief",
                 category=AssumptionCategory.KEY_CARDS,
-                description="These are the cards your deck most needs to function",
-                current_value=key_cards[:5],  # Top 5 key cards
-                expected_range=(0.0, 0.0),  # Not a numeric comparison
+                description=(
+                    "These are cards you believe the deck needs to draw to function."
+                ),
+                observed_value=key_cards[:5],
+                typical_range=(0.0, 0.0),  # Not a numeric comparison
                 health=AssumptionHealth.HEALTHY,
                 explanation=(
-                    "If any of these cards underperform or are removed, "
-                    "your deck's effectiveness may drop significantly."
+                    "You've identified these as key cards by running 4 copies. "
+                    "Consider: What happens if you don't draw them? "
+                    "What happens if they're answered immediately?"
                 ),
                 adjustable=True,
             )
@@ -269,15 +307,14 @@ def _extract_key_card_assumptions(
     return assumptions
 
 
-def _extract_interaction_timing_assumptions(
+def _surface_interaction_beliefs(
     deck: MetaDeck,
     card_db: dict[str, dict[str, Any]],
     archetype: str,
 ) -> list[DeckAssumption]:
-    """Extract interaction timing assumptions."""
+    """Surface interaction characteristics for player examination."""
     assumptions: list[DeckAssumption] = []
 
-    # Count removal and interaction
     removal_count = 0
     instant_removal = 0
 
@@ -303,43 +340,46 @@ def _extract_interaction_timing_assumptions(
             if "instant" in type_line:
                 instant_removal += qty
 
-    # Expected removal by archetype
-    expected_removal = ARCHETYPE_ROLE_TARGETS.get(archetype, {}).get("removal", 6)
-    removal_health = _calculate_health(removal_count, expected_removal - 2, expected_removal + 4)
+    typical_removal = ARCHETYPE_ROLE_TARGETS.get(archetype, {}).get("removal", 6)
+    comparison = _compare_to_baseline(removal_count, typical_removal - 2, typical_removal + 4)
 
     assumptions.append(
         DeckAssumption(
-            name="Removal Density",
+            name="Interaction Belief",
             category=AssumptionCategory.INTERACTION_TIMING,
-            description=f"This deck has {removal_count} removal/interaction spells",
-            current_value=removal_count,
-            expected_range=(float(max(0, expected_removal - 2)), float(expected_removal + 4)),
-            health=removal_health,
-            explanation=_explain_removal(removal_count, expected_removal, archetype),
+            description=(
+                f"This deck has {removal_count} interaction spells. "
+                f"You believe this is enough to handle opposing threats."
+            ),
+            observed_value=removal_count,
+            typical_range=(float(max(0, typical_removal - 2)), float(typical_removal + 4)),
+            health=comparison,
+            explanation=_explain_interaction_belief(removal_count, typical_removal, archetype),
             adjustable=True,
         )
     )
 
-    # Instant-speed interaction ratio
     if removal_count > 0:
         instant_ratio = instant_removal / removal_count
-        ratio_health = AssumptionHealth.HEALTHY
+        ratio_comparison = AssumptionHealth.HEALTHY
         if archetype == "control" and instant_ratio < 0.5:
-            ratio_health = AssumptionHealth.WARNING
+            ratio_comparison = AssumptionHealth.WARNING
 
         assumptions.append(
             DeckAssumption(
-                name="Instant-Speed Interaction",
+                name="Response Timing Belief",
                 category=AssumptionCategory.INTERACTION_TIMING,
                 description=(
-                    f"{instant_removal} of {removal_count} interaction spells are instant-speed"
+                    f"{instant_removal} of {removal_count} interaction spells are instant-speed. "
+                    f"You believe this timing is sufficient for your game plan."
                 ),
-                current_value=round(instant_ratio, 2),
-                expected_range=(0.3, 1.0),
-                health=ratio_health,
+                observed_value=round(instant_ratio, 2),
+                typical_range=(0.3, 1.0),
+                health=ratio_comparison,
                 explanation=(
-                    "Instant-speed removal lets you respond to threats on your opponent's turn. "
-                    f"This deck has {int(instant_ratio * 100)}% instant-speed interaction."
+                    f"Instant-speed interaction lets you respond on your opponent's turn. "
+                    f"{int(instant_ratio * 100)}% of your interaction is instant-speed. "
+                    f"Whether this is enough depends on the threats you expect to face."
                 ),
                 adjustable=False,
             )
@@ -348,19 +388,25 @@ def _extract_interaction_timing_assumptions(
     return assumptions
 
 
-def _calculate_health(value: float, min_expected: float, max_expected: float) -> AssumptionHealth:
-    """Calculate health status based on expected range."""
-    if min_expected <= value <= max_expected:
+def _compare_to_baseline(
+    value: float, min_typical: float, max_typical: float
+) -> AssumptionHealth:
+    """
+    Compare a value to conventional baseline.
+
+    This is NOT a quality judgment. It indicates deviation from convention.
+    Deviation may be intentional and correct.
+    """
+    if min_typical <= value <= max_typical:
         return AssumptionHealth.HEALTHY
 
-    # How far outside the range?
-    if value < min_expected:
+    if value < min_typical:
         deviation = (
-            (min_expected - value) / min_expected if min_expected > 0 else abs(min_expected - value)
+            (min_typical - value) / min_typical if min_typical > 0 else abs(min_typical - value)
         )
     else:
         deviation = (
-            (value - max_expected) / max_expected if max_expected > 0 else abs(value - max_expected)
+            (value - max_typical) / max_typical if max_typical > 0 else abs(value - max_typical)
         )
 
     if deviation > 0.25:
@@ -368,96 +414,130 @@ def _calculate_health(value: float, min_expected: float, max_expected: float) ->
     return AssumptionHealth.WARNING
 
 
-def _calculate_fragility(
+# Keep old name as alias
+_calculate_health = _compare_to_baseline
+
+
+def _calculate_deviation(
     assumptions: list[DeckAssumption],
     archetype: str,
 ) -> tuple[float, str]:
-    """Calculate overall deck fragility from assumptions."""
+    """
+    Calculate how much the deck deviates from conventional patterns.
+
+    This is NOT a prediction of failure. It measures unconventionality.
+    Unconventional decks may perform excellently.
+    """
     if not assumptions:
-        return 0.0, "No assumptions analyzed."
+        return 0.0, "No assumptions to examine."
 
     warnings = sum(1 for a in assumptions if a.health == AssumptionHealth.WARNING)
     criticals = sum(1 for a in assumptions if a.health == AssumptionHealth.CRITICAL)
 
-    # Fragility score: 0-1
-    fragility = min(1.0, (warnings * 0.15) + (criticals * 0.3))
+    deviation = min(1.0, (warnings * 0.15) + (criticals * 0.3))
 
-    if fragility < 0.2:
+    if deviation < 0.2:
         explanation = (
-            f"This {archetype} deck's assumptions are well within expected ranges. "
-            "It should perform consistently under normal conditions."
+            f"This {archetype} deck's characteristics match conventional patterns. "
+            f"This doesn't guarantee success—it means the deck isn't unusual for its archetype."
         )
-    elif fragility < 0.5:
+    elif deviation < 0.5:
         explanation = (
-            f"This {archetype} deck has some assumptions outside typical ranges. "
-            f"There are {warnings} warning(s) that may affect consistency."
+            f"This {archetype} deck differs from convention in {warnings} area(s). "
+            f"This may be intentional. Consider whether these differences serve your game plan."
         )
     else:
         explanation = (
-            f"This {archetype} deck relies on assumptions that deviate "
-            f"significantly from typical builds. "
-            f"There are {criticals} critical issue(s) and {warnings} warning(s). "
-            "Consider stress-testing to understand how this affects performance."
+            f"This {archetype} deck differs significantly from typical builds "
+            f"({criticals} major difference(s), {warnings} minor). "
+            f"This isn't necessarily wrong—but you should understand why you're diverging."
         )
 
-    return fragility, explanation
+    return deviation, explanation
 
 
-def _explain_cmc(actual: float, expected: tuple[float, float], archetype: str) -> str:
-    """Explain average CMC assumption."""
-    range_str = f"{expected[0]:.1f}-{expected[1]:.1f}"
-    if expected[0] <= actual <= expected[1]:
-        return f"This is within the typical range ({range_str}) for {archetype} decks."
+# Keep old name as alias
+_calculate_fragility = _calculate_deviation
 
-    if actual < expected[0]:
+
+def _explain_cmc_belief(actual: float, typical: tuple[float, float], archetype: str) -> str:
+    """Explain mana curve observation."""
+    range_str = f"{typical[0]:.1f}-{typical[1]:.1f}"
+    if typical[0] <= actual <= typical[1]:
+        return (
+            f"This matches the typical range ({range_str}) for {archetype} decks. "
+            f"Whether this is correct for your specific game plan is for you to decide."
+        )
+
+    if actual < typical[0]:
         return (
             f"This is below the typical range ({range_str}) for {archetype}. "
-            "The deck may run out of gas quickly without card advantage."
+            f"You believe the deck can function on a lower curve. "
+            f"Consider: Will you run out of cards before closing the game?"
         )
     return (
         f"This is above the typical range ({range_str}) for {archetype}. "
-        "The deck may struggle with early game pressure."
+        f"You believe the deck can afford a higher curve. "
+        f"Consider: Can you survive long enough to cast your expensive spells?"
     )
 
 
-def _explain_lands(actual: int, expected: tuple[int, int], archetype: str) -> str:
-    """Explain land count assumption."""
-    if expected[0] <= actual <= expected[1]:
+def _explain_land_belief(actual: int, typical: tuple[int, int], archetype: str) -> str:
+    """Explain land count observation."""
+    if typical[0] <= actual <= typical[1]:
         return (
-            f"This is within the typical range ({expected[0]}-{expected[1]}) for {archetype} decks."
+            f"This matches the typical range ({typical[0]}-{typical[1]}) for {archetype}. "
+            f"Whether this is correct depends on your curve and mana requirements."
         )
 
-    if actual < expected[0]:
+    if actual < typical[0]:
         return (
-            f"This is below typical ({expected[0]}-{expected[1]}) for {archetype}. "
-            "The deck assumes it will function on fewer lands, which increases mana screw risk."
-        )
-    return (
-        f"This is above typical ({expected[0]}-{expected[1]}) for {archetype}. "
-        "This reduces mana screw but may lead to flooding in longer games."
-    )
-
-
-def _explain_draw(actual: int, expected: tuple[int, int], archetype: str) -> str:
-    """Explain card draw assumption."""
-    if expected[0] <= actual <= expected[1]:
-        return f"This is typical for {archetype} decks, providing adequate card flow."
-
-    if actual < expected[0]:
-        return (
-            f"This is below typical ({expected[0]}-{expected[1]}) for {archetype}. "
-            "The deck assumes its opening hand and topdecks will be sufficient."
+            f"This is below typical ({typical[0]}-{typical[1]}) for {archetype}. "
+            f"You believe the deck functions on fewer lands. "
+            f"Consider: How often will you miss land drops that matter?"
         )
     return (
-        f"This is above typical ({expected[0]}-{expected[1]}) for {archetype}. "
-        "Strong card selection, but may trade early tempo for late-game consistency."
+        f"This is above typical ({typical[0]}-{typical[1]}) for {archetype}. "
+        f"You believe the extra lands are worth the flood risk. "
+        f"Consider: Will you draw too many lands in long games?"
     )
 
 
-def _explain_removal(actual: int, expected: int, archetype: str) -> str:
-    """Explain removal density assumption."""
-    base = f"For a {archetype} deck, {expected} interaction spells is typical. "
-    base += f"This deck has {actual}. "
-    if actual < expected:
-        base += "Fewer spells means relying on racing opponents."
+def _explain_draw_belief(actual: int, typical: tuple[int, int], archetype: str) -> str:
+    """Explain card draw observation."""
+    if typical[0] <= actual <= typical[1]:
+        return (
+            f"This is typical for {archetype} decks. "
+            f"Whether it's right for your game plan depends on how you expect games to go."
+        )
+
+    if actual < typical[0]:
+        return (
+            f"This is below typical ({typical[0]}-{typical[1]}) for {archetype}. "
+            f"You believe your opening hand and topdecks will be sufficient. "
+            f"Consider: What happens when you need to find a specific answer?"
+        )
+    return (
+        f"This is above typical ({typical[0]}-{typical[1]}) for {archetype}. "
+        f"You're investing in card flow. "
+        f"Consider: Are you giving up early tempo for late-game consistency?"
+    )
+
+
+def _explain_interaction_belief(actual: int, typical: int, archetype: str) -> str:
+    """Explain interaction observation."""
+    base = (
+        f"Convention suggests ~{typical} interaction spells for {archetype}. "
+        f"This deck has {actual}. "
+    )
+    if actual < typical:
+        base += (
+            "You believe you can race or ignore opposing threats. "
+            "Consider: What happens when you can't?"
+        )
+    else:
+        base += (
+            "You believe you need to answer opposing threats. "
+            "Consider: Is this taking slots from your own game plan?"
+        )
     return base
