@@ -115,6 +115,24 @@ _NON_CARD_ENDINGS = frozenset(
 )
 
 
+def canonical_card_key(name: str) -> str:
+    """
+    Return the canonical comparison key for a card name.
+
+    - Strips subtitle after the first comma
+    - Normalizes internal whitespace
+    - Case-folds for comparison
+
+    NOTE:
+    This enforces existence-level validation, not identity resolution.
+    Ambiguous base names (e.g. "Jace") are intentionally allowed.
+    """
+    # Strip after first comma
+    base = name.split(",", 1)[0]
+    # Normalize whitespace and case-fold
+    return " ".join(base.split()).casefold()
+
+
 def _is_likely_card_name(name: str) -> bool:
     """
     Check if a string is likely an MTG card name.
@@ -204,9 +222,12 @@ def validate_output_card_names(
     if additional_allowed:
         allowed = allowed | additional_allowed
 
+    # Build canonical key set for comparison (once per invocation)
+    allowed_canonical = frozenset(canonical_card_key(name) for name in allowed)
+
     leaked: list[str] = []
     for name in potential_names:
-        if name not in allowed:
+        if canonical_card_key(name) not in allowed_canonical:
             leaked.append(name)
 
     return GuardResult(
