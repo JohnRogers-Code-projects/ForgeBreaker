@@ -8,6 +8,14 @@ from forgebreaker.models.allowed_cards import (
 from forgebreaker.models.card import Card
 from forgebreaker.models.collection import Collection
 from forgebreaker.models.deck import DeckDistance, MetaDeck, RankedDeck, WildcardCost
+from forgebreaker.models.failure import (
+    ApiResponse,
+    FailureDetail,
+    FailureKind,
+    KnownError,
+    OutcomeType,
+    RefusalError,
+)
 from forgebreaker.models.validated_deck import (
     DeckValidationError,
     ValidatedDeck,
@@ -16,13 +24,19 @@ from forgebreaker.models.validated_deck import (
 
 __all__ = [
     "AllowedCardSet",
+    "ApiResponse",
     "Card",
     "CardNotAllowedError",
     "Collection",
     "DeckDistance",
     "DeckValidationError",
+    "FailureDetail",
+    "FailureKind",
+    "KnownError",
     "MetaDeck",
+    "OutcomeType",
     "RankedDeck",
+    "RefusalError",
     "ValidatedDeck",
     "WildcardCost",
     "build_allowed_set",
