@@ -58,9 +58,7 @@ class TestGetCollection:
     ) -> None:
         """Returns empty collection for new user when demo not available."""
         # Disable demo mode for this test to verify empty behavior
-        monkeypatch.setattr(
-            "forgebreaker.api.collection.demo_collection_available", lambda: False
-        )
+        monkeypatch.setattr("forgebreaker.api.collection.demo_collection_available", lambda: False)
 
         response = await client.get("/collection/new-user")
 
@@ -178,9 +176,7 @@ class TestDeleteCollection:
     ) -> None:
         """Can delete an existing collection."""
         # Disable demo mode to verify empty collection after delete
-        monkeypatch.setattr(
-            "forgebreaker.api.collection.demo_collection_available", lambda: False
-        )
+        monkeypatch.setattr("forgebreaker.api.collection.demo_collection_available", lambda: False)
 
         await client.put(
             "/collection/user-123",
@@ -255,9 +251,7 @@ class TestCollectionStats:
     ) -> None:
         """Returns empty stats for nonexistent collection when demo not available."""
         # Disable demo mode to verify empty stats behavior
-        monkeypatch.setattr(
-            "forgebreaker.api.collection.demo_collection_available", lambda: False
-        )
+        monkeypatch.setattr("forgebreaker.api.collection.demo_collection_available", lambda: False)
 
         response = await client.get("/collection/new-user/stats")
 
