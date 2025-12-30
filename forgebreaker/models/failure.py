@@ -364,7 +364,7 @@ def create_unknown_failure(
     if include_type:
         detail = f"{type(exception).__name__}"
 
-    response = ApiResponse(
+    response: ApiResponse[Any] = ApiResponse(
         outcome=OutcomeType.UNKNOWN_FAILURE,
         failure=FailureDetail(
             kind=FailureKind.UNKNOWN,
@@ -393,7 +393,7 @@ def create_known_failure(
     Returns:
         A finalized known failure response
     """
-    response = ApiResponse(
+    response: ApiResponse[Any] = ApiResponse(
         outcome=OutcomeType.KNOWN_FAILURE,
         failure=FailureDetail(
             kind=kind,
@@ -422,7 +422,7 @@ def create_refusal(
     Returns:
         A finalized refusal response
     """
-    response = ApiResponse(
+    response: ApiResponse[Any] = ApiResponse(
         outcome=OutcomeType.REFUSAL,
         failure=FailureDetail(
             kind=kind,
