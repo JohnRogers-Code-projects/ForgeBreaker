@@ -40,7 +40,9 @@ from forgebreaker.services.card_name_guard import (
     GuardResult,
     create_refusal_response,
     extract_potential_card_names,
+    get_guard_stats,
     guard_output,
+    reset_guard_stats,
     validate_output_card_names,
 )
 from forgebreaker.services.collection_search import (
@@ -127,6 +129,8 @@ __all__ = [
     "GuardResult",
     "create_refusal_response",
     "extract_potential_card_names",
+    "get_guard_stats",
     "guard_output",
+    "reset_guard_stats",
     "validate_output_card_names",
 ]

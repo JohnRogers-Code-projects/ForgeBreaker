@@ -26,7 +26,7 @@ from forgebreaker.models.failure import (
     create_unknown_failure,
     finalize_response,
 )
-from forgebreaker.services.card_name_guard import CardNameLeakageError
+from forgebreaker.services.card_name_guard import CardNameLeakageError, get_guard_stats
 
 logger = logging.getLogger(__name__)
 
@@ -120,3 +120,20 @@ async def unknown_exception_handler(_request: Request, exc: Exception) -> JSONRe
         status_code=500,
         content=response.model_dump(),
     )
+
+
+# =============================================================================
+# DIAGNOSTICS ENDPOINT — Guard Stats for Production Monitoring
+# =============================================================================
+
+
+@app.get("/diagnostics/guard-stats")
+async def get_guard_diagnostics() -> dict[str, int | float]:
+    """
+    Get card name guard instrumentation statistics.
+
+    Returns:
+        Dict with invocation count, total time, leak count, and average time.
+        This is useful for monitoring guard performance in production.
+    """
+    return get_guard_stats()
