@@ -13,10 +13,24 @@ FAILURE MODE: If an unvalidated card name is detected, the guard
 raises CardNameLeakageError. Failure is better than a lie.
 """
 
+import logging
 import re
+import time
 from dataclasses import dataclass
 
 from forgebreaker.models.validated_deck import ValidatedDeck
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# INSTRUMENTATION FOR PRODUCTION DEBUGGING
+# =============================================================================
+# These counters help diagnose performance and failure patterns.
+# They are reset on module reload and are purely diagnostic.
+
+_guard_invocation_count: int = 0
+_guard_total_time_ms: float = 0.0
+_guard_leak_count: int = 0
 
 
 class CardNameLeakageError(Exception):
@@ -123,7 +137,7 @@ def _is_likely_card_name(name: str) -> bool:
     return all(not name_lower.endswith(ending) for ending in _NON_CARD_ENDINGS)
 
 
-def extract_potential_card_names(text: str) -> set[str]:
+def extract_potential_card_names(text: str, log_matches: bool = False) -> set[str]:
     """
     Extract all potential MTG card names from a text string.
 
@@ -132,13 +146,16 @@ def extract_potential_card_names(text: str) -> set[str]:
 
     Args:
         text: Text to scan for card names
+        log_matches: If True, log each pattern match for debugging
 
     Returns:
         Set of potential card name strings
     """
     potential_names: set[str] = set()
 
-    for pattern in _CARD_REFERENCE_PATTERNS:
+    pattern_names = ["quantity_prefix", "markdown_bold", "bracket_reference"]
+
+    for i, pattern in enumerate(_CARD_REFERENCE_PATTERNS):
         for match in pattern.finditer(text):
             # Get the card name group (varies by pattern)
             groups = match.groups()
@@ -148,6 +165,13 @@ def extract_potential_card_names(text: str) -> set[str]:
 
             if _is_likely_card_name(name):
                 potential_names.add(name)
+                if log_matches:
+                    logger.debug(
+                        "GUARD_MATCH: pattern=%s, matched='%s', context='%s'",
+                        pattern_names[i] if i < len(pattern_names) else f"pattern_{i}",
+                        name,
+                        match.group(0)[:50],
+                    )
 
     return potential_names
 
@@ -214,9 +238,62 @@ def guard_output(
     Raises:
         CardNameLeakageError: If any unvalidated card name is detected
     """
+    global _guard_invocation_count, _guard_total_time_ms, _guard_leak_count
+
+    _guard_invocation_count += 1
+    invocation_id = _guard_invocation_count
+    start_time = time.perf_counter()
+
+    # Log invocation context
+    deck_size = len(validated_deck)
+    additional_size = len(additional_allowed) if additional_allowed else 0
+    output_len = len(output)
+
+    logger.info(
+        "GUARD_INVOKE #%d: output_len=%d, deck_cards=%d, additional=%d",
+        invocation_id,
+        output_len,
+        deck_size,
+        additional_size,
+    )
+
+    # Log validated deck contents (truncated for large decks)
+    deck_cards_preview = list(validated_deck.cards)[:10]
+    logger.debug(
+        "GUARD_DECK #%d: cards=%s%s",
+        invocation_id,
+        deck_cards_preview,
+        "..." if deck_size > 10 else "",
+    )
+
     result = validate_output_card_names(output, validated_deck, additional_allowed)
 
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+    _guard_total_time_ms += elapsed_ms
+
+    # Log extracted names
+    if result.checked_count > 0:
+        logger.info(
+            "GUARD_EXTRACT #%d: found %d potential card names in output",
+            invocation_id,
+            result.checked_count,
+        )
+
     if not result.valid:
+        _guard_leak_count += 1
+        # Log ALL leaked names, not just the first
+        logger.warning(
+            "GUARD_LEAK #%d: leaked_names=%s, output_preview='%s'",
+            invocation_id,
+            result.leaked_names,
+            output[:200].replace("\n", "\\n"),
+        )
+        logger.info(
+            "GUARD_STATS: total_invocations=%d, total_time_ms=%.2f, total_leaks=%d",
+            _guard_invocation_count,
+            _guard_total_time_ms,
+            _guard_leak_count,
+        )
         # Take the first leaked name for the error
         leaked = result.leaked_names[0]
         raise CardNameLeakageError(
@@ -225,7 +302,41 @@ def guard_output(
             validated_deck=validated_deck,
         )
 
+    logger.info(
+        "GUARD_PASS #%d: elapsed_ms=%.2f, checked=%d names",
+        invocation_id,
+        elapsed_ms,
+        result.checked_count,
+    )
+
     return output
+
+
+def get_guard_stats() -> dict[str, int | float]:
+    """
+    Get instrumentation statistics for the guard.
+
+    Returns:
+        Dict with invocation count, total time, and leak count
+    """
+    return {
+        "invocation_count": _guard_invocation_count,
+        "total_time_ms": round(_guard_total_time_ms, 2),
+        "leak_count": _guard_leak_count,
+        "avg_time_ms": (
+            round(_guard_total_time_ms / _guard_invocation_count, 2)
+            if _guard_invocation_count > 0
+            else 0.0
+        ),
+    }
+
+
+def reset_guard_stats() -> None:
+    """Reset instrumentation counters (for testing)."""
+    global _guard_invocation_count, _guard_total_time_ms, _guard_leak_count
+    _guard_invocation_count = 0
+    _guard_total_time_ms = 0.0
+    _guard_leak_count = 0
 
 
 def create_refusal_response(error: CardNameLeakageError) -> dict[str, str | bool]:
