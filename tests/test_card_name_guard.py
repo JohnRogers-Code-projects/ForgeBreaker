@@ -304,3 +304,67 @@ class TestValidatedDeck:
 
         assert "Lightning Bolt" in deck
         assert "Pyroblast" in deck
+
+
+class TestCanonicalCardMatching:
+    """
+    Tests for canonical card name matching.
+
+    The guard uses canonical matching to align extracted base names
+    (e.g. "Jace") with full card names (e.g. "Jace, the Mind Sculptor").
+
+    This is existence-level validation, not identity resolution.
+    """
+
+    def test_canonical_match_ambiguous_allowed(self) -> None:
+        """Base name matches when multiple full names are allowed."""
+        validated_deck = create_validated_deck(
+            maindeck={
+                "Jace, the Mind Sculptor": 2,
+                "Jace, Vryn's Prodigy": 2,
+            },
+            validation_source="test",
+        )
+
+        # "Jace" should match — ambiguous but real
+        output = "Consider adding **Jace** to the deck."
+        result = validate_output_card_names(output, validated_deck)
+
+        assert result.valid is True
+
+    def test_canonical_match_single_card(self) -> None:
+        """Base name matches single full card name."""
+        validated_deck = create_validated_deck(
+            maindeck={"Magda, Brazen Outlaw": 4},
+            validation_source="test",
+        )
+
+        output = "**Magda** generates treasure tokens."
+        result = validate_output_card_names(output, validated_deck)
+
+        assert result.valid is True
+
+    def test_canonical_no_match_misspelled(self) -> None:
+        """Misspelled name does not match."""
+        validated_deck = create_validated_deck(
+            maindeck={"Magda, Brazen Outlaw": 4},
+            validation_source="test",
+        )
+
+        output = "**Maghta** generates treasure tokens."
+        result = validate_output_card_names(output, validated_deck)
+
+        assert result.valid is False
+        assert "Maghta" in result.leaked_names
+
+    def test_canonical_exact_full_name_unchanged(self) -> None:
+        """Exact full name still works (regression test)."""
+        validated_deck = create_validated_deck(
+            maindeck={"Chandra, Hope's Beacon": 2},
+            validation_source="test",
+        )
+
+        output = "4x Chandra, Hope's Beacon"
+        result = validate_output_card_names(output, validated_deck)
+
+        assert result.valid is True

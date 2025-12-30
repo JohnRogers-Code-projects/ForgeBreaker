@@ -38,6 +38,7 @@ from forgebreaker.services.arena_sanitizer import (
 from forgebreaker.services.card_name_guard import (
     CardNameLeakageError,
     GuardResult,
+    canonical_card_key,
     create_refusal_response,
     extract_potential_card_names,
     get_guard_stats,
@@ -127,6 +128,7 @@ __all__ = [
     # Card name guard - output barrier
     "CardNameLeakageError",
     "GuardResult",
+    "canonical_card_key",
     "create_refusal_response",
     "extract_potential_card_names",
     "get_guard_stats",
