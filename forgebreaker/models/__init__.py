@@ -6,6 +6,13 @@ from forgebreaker.models.allowed_cards import (
     validate_card_list,
 )
 from forgebreaker.models.card import Card
+from forgebreaker.models.clarification import (
+    DEFAULT_MAX_CLARIFICATIONS,
+    ClarificationDecision,
+    ClarificationPolicy,
+    ClarificationRequest,
+    ClarificationType,
+)
 from forgebreaker.models.collection import Collection
 from forgebreaker.models.deck import DeckDistance, MetaDeck, RankedDeck, WildcardCost
 from forgebreaker.models.failure import (
@@ -35,7 +42,12 @@ __all__ = [
     "ApiResponse",
     "Card",
     "CardNotAllowedError",
+    "ClarificationDecision",
+    "ClarificationPolicy",
+    "ClarificationRequest",
+    "ClarificationType",
     "Collection",
+    "DEFAULT_MAX_CLARIFICATIONS",
     "DeckDistance",
     "DeckValidationError",
     "FailureDetail",
