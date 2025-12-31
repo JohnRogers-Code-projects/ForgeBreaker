@@ -46,6 +46,14 @@ from forgebreaker.services.card_name_guard import (
     reset_guard_stats,
     validate_output_card_names,
 )
+from forgebreaker.services.clarification import (
+    create_policy,
+    evaluate_clarification,
+    get_next_clarification,
+    record_clarification,
+    resolve_intent_with_policy,
+    should_ask_clarification,
+)
 from forgebreaker.services.collection_search import (
     CardSearchResult,
     format_search_results,
@@ -135,4 +143,11 @@ __all__ = [
     "guard_output",
     "reset_guard_stats",
     "validate_output_card_names",
+    # Clarification policy
+    "create_policy",
+    "evaluate_clarification",
+    "get_next_clarification",
+    "record_clarification",
+    "resolve_intent_with_policy",
+    "should_ask_clarification",
 ]
