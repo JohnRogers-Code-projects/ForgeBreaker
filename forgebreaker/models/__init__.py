@@ -27,7 +27,9 @@ from forgebreaker.models.clarification import (
 from forgebreaker.models.collection import Collection
 from forgebreaker.models.deck import DeckDistance, MetaDeck, RankedDeck, WildcardCost
 from forgebreaker.models.deck_query import (
+    CardScorer,
     DeckQuery,
+    QueryContract,
     QuerySignal,
     QuerySignalType,
     SignalStrength,
@@ -80,6 +82,7 @@ __all__ = [
     "CanonicalCard",
     "Card",
     "CardNotAllowedError",
+    "CardScorer",
     "ClarificationDecision",
     "ClarificationPolicy",
     "ClarificationRequest",
@@ -104,6 +107,7 @@ __all__ = [
     "OutcomeType",
     "OwnedCard",
     "OwnedCardPool",
+    "QueryContract",
     "QuerySignal",
     "QuerySignalType",
     "ROTATION_VERSIONS",

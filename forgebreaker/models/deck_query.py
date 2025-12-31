@@ -6,10 +6,15 @@ A "Goblin deck" query prefers Goblin-related cards but does not
 hard-exclude non-Goblins.
 
 This model is the foundation for scored candidate pools (PR5).
+
+QueryContract defines the formal invariants that ANY scorer must obey.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Protocol, TypeVar
+
+T = TypeVar("T")
 
 
 class QuerySignalType(str, Enum):
@@ -323,6 +328,153 @@ class DeckQuery:
     def empty(cls) -> "DeckQuery":
         """Create an empty query (no preferences)."""
         return cls(signals=())
+
+    def add_signal(self, signal: QuerySignal) -> "DeckQuery":
+        """
+        Create a new query with an additional signal.
+
+        Used for testing monotonicity: adding signals never reduces scores.
+        """
+        return DeckQuery(signals=self.signals + (signal,))
+
+
+# =============================================================================
+# QUERY CONTRACT - FORMAL INVARIANTS
+# =============================================================================
+
+
+class CardScorer(Protocol):
+    """
+    Protocol for any card scoring implementation.
+
+    Any scorer MUST satisfy QueryContract invariants.
+    """
+
+    def score(self, card_name: str, query: "DeckQuery") -> float:
+        """Score a card against a query. Higher = more relevant."""
+        ...
+
+    def matches_signal(self, card_name: str, signal: QuerySignal) -> bool:
+        """Check if a card matches a specific signal."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class QueryContract:
+    """
+    Formal specification of query semantics invariants.
+
+    ANY scorer implementation MUST satisfy these invariants.
+    These are encoded as testable predicates, not comments.
+
+    INVARIANT 1 - DOMINANCE:
+        Cards matching a preference must never score lower than cards that don't.
+        For a Goblin query: score(Goblin) >= score(non-Goblin)
+
+    INVARIANT 2 - MONOTONICITY:
+        Adding preferences must never reduce a card's score.
+        For any card: score(card, query + signal) >= score(card, query)
+
+    INVARIANT 3 - NON-EXCLUSIVITY:
+        Queries express preference, not exclusion.
+        For any non-matching card: score(card) >= 0 (not excluded)
+        Exception: REQUIRED signals (e.g., format) ARE exclusionary.
+
+    Usage:
+        contract = QueryContract()
+        assert contract.check_dominance(scorer, query, matching_card, non_matching_card)
+        assert contract.check_monotonicity(scorer, card, query, additional_signal)
+        assert contract.check_non_exclusivity(scorer, query, non_matching_card)
+    """
+
+    # Minimum score for non-excluded cards
+    MIN_INCLUDED_SCORE: float = 0.0
+
+    def check_dominance(
+        self,
+        scorer: CardScorer,
+        query: "DeckQuery",
+        matching_card: str,
+        non_matching_card: str,
+        signal: QuerySignal,
+    ) -> bool:
+        """
+        DOMINANCE: Matching cards score >= non-matching cards.
+
+        Args:
+            scorer: Card scoring implementation
+            query: The deck query
+            matching_card: Card that matches the signal
+            non_matching_card: Card that doesn't match the signal
+            signal: The signal to check
+
+        Returns:
+            True if invariant holds, False if violated
+        """
+        # Verify preconditions
+        if not scorer.matches_signal(matching_card, signal):
+            raise ValueError(f"{matching_card} does not match signal {signal}")
+        if scorer.matches_signal(non_matching_card, signal):
+            raise ValueError(f"{non_matching_card} matches signal {signal}")
+
+        matching_score = scorer.score(matching_card, query)
+        non_matching_score = scorer.score(non_matching_card, query)
+
+        return matching_score >= non_matching_score
+
+    def check_monotonicity(
+        self,
+        scorer: CardScorer,
+        card: str,
+        base_query: "DeckQuery",
+        additional_signal: QuerySignal,
+    ) -> bool:
+        """
+        MONOTONICITY: Adding preferences never reduces scores.
+
+        Args:
+            scorer: Card scoring implementation
+            card: Card to check
+            base_query: Original query
+            additional_signal: Signal to add
+
+        Returns:
+            True if invariant holds, False if violated
+        """
+        base_score = scorer.score(card, base_query)
+        extended_query = base_query.add_signal(additional_signal)
+        extended_score = scorer.score(card, extended_query)
+
+        return extended_score >= base_score
+
+    def check_non_exclusivity(
+        self,
+        scorer: CardScorer,
+        query: "DeckQuery",
+        non_matching_card: str,
+    ) -> bool:
+        """
+        NON-EXCLUSIVITY: Non-matching cards are not excluded (score >= 0).
+
+        Exception: Cards violating REQUIRED signals may be excluded.
+
+        Args:
+            scorer: Card scoring implementation
+            query: The deck query
+            non_matching_card: Card that doesn't match preferences
+
+        Returns:
+            True if invariant holds, False if violated
+        """
+        # Cards violating REQUIRED signals may be excluded
+        for signal in query.get_required_signals():
+            if not scorer.matches_signal(non_matching_card, signal):
+                # Required signal not matched - exclusion is allowed
+                return True
+
+        # For preference signals, card must not be excluded
+        score = scorer.score(non_matching_card, query)
+        return score >= self.MIN_INCLUDED_SCORE
 
 
 def is_tribal_query(query: DeckQuery) -> bool:

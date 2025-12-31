@@ -4,12 +4,18 @@ Tests for PR4: Semantic Deck Queries.
 INVARIANT: Queries express preferences, NOT exclusions.
 A "Goblin deck" query prefers Goblin-related cards but does NOT
 hard-exclude non-Goblins.
+
+QueryContract encodes formal invariants that ANY scorer must obey:
+1. DOMINANCE: Matching cards score >= non-matching cards
+2. MONOTONICITY: Adding preferences never reduces scores
+3. NON-EXCLUSIVITY: Non-matching cards are not excluded (score >= 0)
 """
 
 import pytest
 
 from forgebreaker.models.deck_query import (
     DeckQuery,
+    QueryContract,
     QuerySignal,
     QuerySignalType,
     SignalStrength,
@@ -390,3 +396,385 @@ class TestQueryImmutability:
 
         with pytest.raises(AttributeError):
             signal.value = "Dragon"  # type: ignore[misc]
+
+
+# =============================================================================
+# QUERY CONTRACT TESTS - FORMAL INVARIANTS
+# =============================================================================
+
+
+class MockScorer:
+    """
+    Mock scorer for testing QueryContract invariants.
+
+    This scorer implements the correct invariant behavior:
+    - Matching cards get bonus points
+    - Non-matching cards get base score
+    - Adding preferences only adds bonuses
+    """
+
+    def __init__(self) -> None:
+        # Card database: card_name -> {property: value}
+        self.card_db: dict[str, dict[str, str | list[str]]] = {
+            "Goblin Guide": {"tribe": "Goblin", "colors": ["R"]},
+            "Krenko, Mob Boss": {"tribe": "Goblin", "colors": ["R"]},
+            "Lightning Bolt": {"tribe": "", "colors": ["R"]},  # Not a Goblin
+            "Mountain": {"tribe": "", "colors": []},  # Basic land
+            "Forest": {"tribe": "", "colors": []},  # Basic land
+            "Elvish Mystic": {"tribe": "Elf", "colors": ["G"]},  # Different tribe
+        }
+
+        # Base score for all cards
+        self.base_score = 10.0
+
+        # Bonus for matching each signal type
+        self.signal_bonus = {
+            SignalStrength.STRONG: 5.0,
+            SignalStrength.MODERATE: 3.0,
+            SignalStrength.WEAK: 1.0,
+            SignalStrength.REQUIRED: 0.0,  # Required doesn't add bonus
+        }
+
+    def score(self, card_name: str, query: DeckQuery) -> float:
+        """Score a card against a query."""
+        if card_name not in self.card_db:
+            return 0.0
+
+        score = self.base_score
+
+        for signal in query.signals:
+            if signal.is_required():
+                # Required signals can exclude (return 0 if not matched)
+                if not self.matches_signal(card_name, signal):
+                    return -1.0  # Excluded
+            elif self.matches_signal(card_name, signal):
+                # Add bonus for matching preference
+                score += self.signal_bonus[signal.strength]
+
+        return score
+
+    def matches_signal(self, card_name: str, signal: QuerySignal) -> bool:
+        """Check if a card matches a signal."""
+        if card_name not in self.card_db:
+            return False
+
+        card = self.card_db[card_name]
+
+        if signal.signal_type == QuerySignalType.TRIBE:
+            return card.get("tribe") == signal.value
+
+        if signal.signal_type == QuerySignalType.COLOR:
+            colors = card.get("colors", [])
+            return signal.value.upper() in [c.upper() for c in colors]  # type: ignore[union-attr]
+
+        # For testing, assume all cards are format-legal
+        return signal.signal_type == QuerySignalType.FORMAT
+
+
+class TestQueryContract:
+    """
+    Tests for QueryContract formal invariants.
+
+    These tests prove the invariants using a mock scorer.
+    Any real scorer MUST also pass these tests.
+    """
+
+    @pytest.fixture
+    def contract(self) -> QueryContract:
+        """QueryContract instance."""
+        return QueryContract()
+
+    @pytest.fixture
+    def scorer(self) -> MockScorer:
+        """Mock scorer for testing."""
+        return MockScorer()
+
+    def test_contract_is_immutable(self, contract: QueryContract) -> None:
+        """QueryContract is frozen."""
+        with pytest.raises(AttributeError):
+            contract.MIN_INCLUDED_SCORE = -1.0  # type: ignore[misc]
+
+
+class TestDominanceInvariant:
+    """
+    MANDATORY TEST: Dominance invariant.
+
+    Goblin cards always score >= non-Goblin cards in Goblin query.
+    """
+
+    @pytest.fixture
+    def contract(self) -> QueryContract:
+        return QueryContract()
+
+    @pytest.fixture
+    def scorer(self) -> MockScorer:
+        return MockScorer()
+
+    def test_goblin_scores_higher_than_non_goblin(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        MANDATORY: Goblin cards score >= non-Goblin cards in Goblin query.
+        """
+        query = DeckQuery.for_tribal("Goblin")
+        goblin_signal = query.get_signals(QuerySignalType.TRIBE)[0]
+
+        # Goblin Guide (matches) vs Lightning Bolt (doesn't match)
+        assert contract.check_dominance(
+            scorer=scorer,
+            query=query,
+            matching_card="Goblin Guide",
+            non_matching_card="Lightning Bolt",
+            signal=goblin_signal,
+        )
+
+    def test_goblin_scores_higher_than_elf(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        Goblin cards score >= Elf cards in Goblin query.
+        """
+        query = DeckQuery.for_tribal("Goblin")
+        goblin_signal = query.get_signals(QuerySignalType.TRIBE)[0]
+
+        assert contract.check_dominance(
+            scorer=scorer,
+            query=query,
+            matching_card="Krenko, Mob Boss",
+            non_matching_card="Elvish Mystic",
+            signal=goblin_signal,
+        )
+
+    def test_dominance_is_not_equality(self, scorer: MockScorer) -> None:
+        """
+        Dominance means >=, not >. Equal scores are valid.
+        """
+        query = DeckQuery.for_tribal("Goblin")
+
+        # Both are Goblins, so dominance trivially holds (same score)
+        goblin_guide_score = scorer.score("Goblin Guide", query)
+        krenko_score = scorer.score("Krenko, Mob Boss", query)
+
+        # Both should have the same score (base + tribe bonus)
+        assert goblin_guide_score == krenko_score
+
+    def test_dominance_violation_raises(self, contract: QueryContract, scorer: MockScorer) -> None:
+        """
+        Checking dominance with wrong card pairing raises ValueError.
+        """
+        query = DeckQuery.for_tribal("Goblin")
+        goblin_signal = query.get_signals(QuerySignalType.TRIBE)[0]
+
+        # Lightning Bolt doesn't match Goblin - can't be the "matching" card
+        with pytest.raises(ValueError, match="does not match signal"):
+            contract.check_dominance(
+                scorer=scorer,
+                query=query,
+                matching_card="Lightning Bolt",  # Wrong - doesn't match
+                non_matching_card="Goblin Guide",
+                signal=goblin_signal,
+            )
+
+
+class TestMonotonicityInvariant:
+    """
+    MANDATORY TEST: Monotonicity invariant.
+
+    Adding a preference never lowers any card's score.
+    """
+
+    @pytest.fixture
+    def contract(self) -> QueryContract:
+        return QueryContract()
+
+    @pytest.fixture
+    def scorer(self) -> MockScorer:
+        return MockScorer()
+
+    def test_adding_tribe_preference_never_lowers_score(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        MANDATORY: Adding a tribe preference never reduces any score.
+        """
+        base_query = DeckQuery.empty()
+        additional_signal = QuerySignal(
+            signal_type=QuerySignalType.TRIBE,
+            value="Goblin",
+            strength=SignalStrength.STRONG,
+        )
+
+        # Test for Goblin card
+        assert contract.check_monotonicity(
+            scorer=scorer,
+            card="Goblin Guide",
+            base_query=base_query,
+            additional_signal=additional_signal,
+        )
+
+        # Test for non-Goblin card
+        assert contract.check_monotonicity(
+            scorer=scorer,
+            card="Lightning Bolt",
+            base_query=base_query,
+            additional_signal=additional_signal,
+        )
+
+    def test_adding_color_preference_never_lowers_score(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        Adding a color preference never reduces any score.
+        """
+        base_query = DeckQuery.for_tribal("Goblin")
+        additional_signal = QuerySignal(
+            signal_type=QuerySignalType.COLOR,
+            value="R",
+            strength=SignalStrength.STRONG,
+        )
+
+        # Red card
+        assert contract.check_monotonicity(
+            scorer=scorer,
+            card="Goblin Guide",
+            base_query=base_query,
+            additional_signal=additional_signal,
+        )
+
+        # Green card (doesn't match color)
+        assert contract.check_monotonicity(
+            scorer=scorer,
+            card="Elvish Mystic",
+            base_query=base_query,
+            additional_signal=additional_signal,
+        )
+
+    def test_monotonicity_across_multiple_signals(self, scorer: MockScorer) -> None:
+        """
+        Monotonicity holds when adding multiple signals.
+        """
+        # Start with empty query
+        query1 = DeckQuery.empty()
+        signal1 = QuerySignal(QuerySignalType.TRIBE, "Goblin", SignalStrength.STRONG)
+        query2 = query1.add_signal(signal1)
+        signal2 = QuerySignal(QuerySignalType.COLOR, "R", SignalStrength.STRONG)
+        query3 = query2.add_signal(signal2)
+
+        # Scores should only increase (or stay same)
+        score1 = scorer.score("Goblin Guide", query1)
+        score2 = scorer.score("Goblin Guide", query2)
+        score3 = scorer.score("Goblin Guide", query3)
+
+        assert score1 <= score2 <= score3
+
+
+class TestNonExclusivityInvariant:
+    """
+    MANDATORY TEST: Non-exclusivity invariant.
+
+    Non-matching cards are not excluded (score >= 0).
+    """
+
+    @pytest.fixture
+    def contract(self) -> QueryContract:
+        return QueryContract()
+
+    @pytest.fixture
+    def scorer(self) -> MockScorer:
+        return MockScorer()
+
+    def test_non_goblin_not_excluded_from_goblin_query(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        MANDATORY: Non-Goblin cards are not excluded from Goblin query.
+        """
+        query = DeckQuery.for_tribal("Goblin")
+
+        # Lightning Bolt doesn't match Goblin but should not be excluded
+        assert contract.check_non_exclusivity(
+            scorer=scorer,
+            query=query,
+            non_matching_card="Lightning Bolt",
+        )
+
+    def test_non_red_not_excluded_from_red_query(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        Non-red cards are not excluded from red preference query.
+        """
+        query = DeckQuery.for_tribal("Goblin", colors=["R"])
+
+        # Elvish Mystic is green, not red
+        assert contract.check_non_exclusivity(
+            scorer=scorer,
+            query=query,
+            non_matching_card="Elvish Mystic",
+        )
+
+    def test_required_signal_can_exclude(self, contract: QueryContract, scorer: MockScorer) -> None:
+        """
+        REQUIRED signals (like format) CAN exclude cards.
+
+        This is the exception - we can't play illegal cards.
+        """
+        query = DeckQuery.for_tribal("Goblin", format="standard")
+
+        # For this test, the contract allows exclusion because format is REQUIRED
+        # The check returns True (no violation) even if the card would be excluded
+        assert contract.check_non_exclusivity(
+            scorer=scorer,
+            query=query,
+            non_matching_card="Lightning Bolt",
+        )
+
+    def test_non_matching_card_has_positive_score(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        Non-matching cards have score >= 0 (not excluded).
+        """
+        query = DeckQuery.for_tribal("Goblin")
+
+        # All non-matching cards should have positive scores
+        non_matching_cards = ["Lightning Bolt", "Elvish Mystic", "Mountain", "Forest"]
+
+        for card in non_matching_cards:
+            score = scorer.score(card, query)
+            assert score >= contract.MIN_INCLUDED_SCORE, f"{card} was excluded"
+
+
+class TestAddSignal:
+    """
+    Tests for DeckQuery.add_signal() method.
+    """
+
+    def test_add_signal_creates_new_query(self) -> None:
+        """
+        add_signal creates a new query with additional signal.
+        """
+        base = DeckQuery.empty()
+        signal = QuerySignal(QuerySignalType.TRIBE, "Goblin", SignalStrength.STRONG)
+
+        extended = base.add_signal(signal)
+
+        # Original unchanged
+        assert len(base.signals) == 0
+
+        # New query has signal
+        assert len(extended.signals) == 1
+        assert extended.tribe == "Goblin"
+
+    def test_add_signal_preserves_existing(self) -> None:
+        """
+        add_signal preserves existing signals.
+        """
+        base = DeckQuery.for_tribal("Goblin")
+        signal = QuerySignal(QuerySignalType.COLOR, "R", SignalStrength.STRONG)
+
+        extended = base.add_signal(signal)
+
+        # Both tribe and color present
+        assert extended.tribe == "Goblin"
+        assert "R" in extended.colors
