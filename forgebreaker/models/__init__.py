@@ -11,6 +11,11 @@ from forgebreaker.models.budget import (
     BudgetExceededError,
     RequestBudget,
 )
+from forgebreaker.models.canonical_card import (
+    CanonicalCard,
+    InventoryCard,
+    OwnedCard,
+)
 from forgebreaker.models.card import Card
 from forgebreaker.models.clarification import (
     DEFAULT_MAX_CLARIFICATIONS,
@@ -37,6 +42,15 @@ from forgebreaker.models.failure import (
     finalize_response,
     is_finalized,
 )
+from forgebreaker.models.legality_context import (
+    CURRENT_ROTATION_VERSION,
+    ROTATION_VERSIONS,
+    LegalityContext,
+    LegalityFormat,
+    LegalityResult,
+    check_legality,
+    filter_by_legality,
+)
 from forgebreaker.models.validated_deck import (
     DeckValidationError,
     ValidatedDeck,
@@ -47,6 +61,8 @@ __all__ = [
     "AllowedCardSet",
     "ApiResponse",
     "BudgetExceededError",
+    "CURRENT_ROTATION_VERSION",
+    "CanonicalCard",
     "Card",
     "CardNotAllowedError",
     "ClarificationDecision",
@@ -56,14 +72,20 @@ __all__ = [
     "Collection",
     "DEFAULT_MAX_CLARIFICATIONS",
     "DeckDistance",
-    "MAX_LLM_CALLS_PER_REQUEST",
-    "MAX_TOKENS_PER_REQUEST",
     "DeckValidationError",
     "FailureDetail",
     "FailureKind",
+    "InventoryCard",
     "KnownError",
+    "LegalityContext",
+    "LegalityFormat",
+    "LegalityResult",
+    "MAX_LLM_CALLS_PER_REQUEST",
+    "MAX_TOKENS_PER_REQUEST",
     "MetaDeck",
     "OutcomeType",
+    "OwnedCard",
+    "ROTATION_VERSIONS",
     "RankedDeck",
     "RefusalError",
     "RequestBudget",
@@ -72,11 +94,13 @@ __all__ = [
     "ValidatedDeck",
     "WildcardCost",
     "build_allowed_set",
+    "check_legality",
     "create_known_failure",
     "create_refusal",
     "create_success",
     "create_unknown_failure",
     "create_validated_deck",
+    "filter_by_legality",
     "finalize_response",
     "is_finalized",
     "validate_card_in_allowed_set",
