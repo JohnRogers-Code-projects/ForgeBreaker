@@ -26,6 +26,15 @@ from forgebreaker.models.clarification import (
 )
 from forgebreaker.models.collection import Collection
 from forgebreaker.models.deck import DeckDistance, MetaDeck, RankedDeck, WildcardCost
+from forgebreaker.models.deck_query import (
+    DeckQuery,
+    QuerySignal,
+    QuerySignalType,
+    SignalStrength,
+    is_archetype_query,
+    is_theme_query,
+    is_tribal_query,
+)
 from forgebreaker.models.failure import (
     STANDARD_MESSAGES,
     STANDARD_SUGGESTIONS,
@@ -80,6 +89,7 @@ __all__ = [
     "DEFAULT_MAX_CLARIFICATIONS",
     "DEFAULT_MAX_COPIES",
     "DeckDistance",
+    "DeckQuery",
     "DeckValidationError",
     "FailureDetail",
     "FailureKind",
@@ -94,12 +104,15 @@ __all__ = [
     "OutcomeType",
     "OwnedCard",
     "OwnedCardPool",
+    "QuerySignal",
+    "QuerySignalType",
     "ROTATION_VERSIONS",
     "RankedDeck",
     "RefusalError",
     "RequestBudget",
     "STANDARD_MESSAGES",
     "STANDARD_SUGGESTIONS",
+    "SignalStrength",
     "ValidatedDeck",
     "WildcardCost",
     "build_allowed_set",
@@ -112,7 +125,10 @@ __all__ = [
     "create_validated_deck",
     "filter_by_legality",
     "finalize_response",
+    "is_archetype_query",
     "is_finalized",
+    "is_theme_query",
+    "is_tribal_query",
     "validate_card_in_allowed_set",
     "validate_card_list",
 ]
