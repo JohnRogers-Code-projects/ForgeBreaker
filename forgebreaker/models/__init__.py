@@ -26,6 +26,15 @@ from forgebreaker.models.clarification import (
 )
 from forgebreaker.models.collection import Collection
 from forgebreaker.models.deck import DeckDistance, MetaDeck, RankedDeck, WildcardCost
+from forgebreaker.models.deck_query import (
+    DeckQuery,
+    QuerySignal,
+    QuerySignalType,
+    SignalStrength,
+    is_archetype_query,
+    is_theme_query,
+    is_tribal_query,
+)
 from forgebreaker.models.failure import (
     STANDARD_MESSAGES,
     STANDARD_SUGGESTIONS,
@@ -62,7 +71,14 @@ __all__ = [
     "Collection",
     "DEFAULT_MAX_CLARIFICATIONS",
     "DeckDistance",
+    "DeckQuery",
     "MAX_LLM_CALLS_PER_REQUEST",
+    "QuerySignal",
+    "QuerySignalType",
+    "SignalStrength",
+    "is_archetype_query",
+    "is_theme_query",
+    "is_tribal_query",
     "MAX_TOKENS_PER_REQUEST",
     "DeckValidationError",
     "FailureDetail",
