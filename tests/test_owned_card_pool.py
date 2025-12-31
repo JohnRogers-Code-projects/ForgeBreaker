@@ -3,12 +3,21 @@ Tests for PR3: Owned Card Pool Builder.
 
 INVARIANT: Only cards with count > 0 may appear in the pool.
 Count=0 cards must NEVER leak into deck construction.
+
+INVARIANT: No deck may exceed:
+  - owned count for any card
+  - max copies per card (default 4)
 """
 
 import pytest
 
 from forgebreaker.models.canonical_card import CanonicalCard, OwnedCard
-from forgebreaker.models.owned_card_pool import OwnedCardPool, build_owned_pool
+from forgebreaker.models.owned_card_pool import (
+    DEFAULT_MAX_COPIES,
+    CopyLimitExceededError,
+    OwnedCardPool,
+    build_owned_pool,
+)
 
 # =============================================================================
 # TEST FIXTURES
@@ -406,3 +415,234 @@ class TestNoPhantomLeakageRegression:
 
         with pytest.raises(AttributeError):
             pool._cards = {}  # type: ignore[misc]
+
+
+# =============================================================================
+# MANDATORY TESTS: COPY LIMIT ENFORCEMENT
+# =============================================================================
+
+
+class TestAvailableCopies:
+    """
+    Tests for available_copies(card: CanonicalCard) method.
+
+    INVARIANT: Returns min(owned_count, max_copies).
+    """
+
+    def test_available_copies_with_canonical_card(
+        self, sample_canonical_cards: list[CanonicalCard]
+    ) -> None:
+        """
+        available_copies() accepts CanonicalCard and returns correct count.
+        """
+        owned = [
+            OwnedCard(card=sample_canonical_cards[0], count=4),  # Lightning Bolt
+            OwnedCard(card=sample_canonical_cards[1], count=20),  # Mountain
+        ]
+        pool = OwnedCardPool.from_owned_cards(owned)
+
+        # Lightning Bolt: own 4, max 4 -> 4
+        assert pool.available_copies(sample_canonical_cards[0]) == 4
+
+        # Mountain: own 20, max 4 -> 4
+        assert pool.available_copies(sample_canonical_cards[1]) == 4
+
+    def test_available_copies_respects_custom_limit(
+        self, sample_canonical_cards: list[CanonicalCard]
+    ) -> None:
+        """
+        available_copies() respects custom max_copies limit.
+        """
+        owned = [
+            OwnedCard(card=sample_canonical_cards[1], count=20),  # Mountain
+        ]
+        pool = OwnedCardPool.from_owned_cards(owned)
+
+        # Custom limit of 10
+        assert pool.available_copies(sample_canonical_cards[1], max_copies=10) == 10
+
+        # Custom limit higher than owned
+        assert pool.available_copies(sample_canonical_cards[1], max_copies=100) == 20
+
+    def test_available_copies_returns_zero_for_unowned(
+        self, sample_canonical_cards: list[CanonicalCard]
+    ) -> None:
+        """
+        available_copies() returns 0 for cards not in pool.
+        """
+        pool = OwnedCardPool.from_dict({"Other Card": 4})
+
+        # Card not in pool
+        assert pool.available_copies(sample_canonical_cards[0]) == 0
+
+    def test_default_max_copies_is_four(self) -> None:
+        """
+        DEFAULT_MAX_COPIES is 4 for constructed formats.
+        """
+        assert DEFAULT_MAX_COPIES == 4
+
+
+class TestDeckExceedsOwnedCopies:
+    """
+    MANDATORY TEST: No deck exceeds owned copies.
+    """
+
+    def test_deck_exceeds_owned_copies_fails(self) -> None:
+        """
+        Deck requesting more copies than owned raises CopyLimitExceededError.
+        """
+        pool = OwnedCardPool.from_dict({"Lightning Bolt": 2})
+
+        deck = {"Lightning Bolt": 4}  # Only own 2
+
+        with pytest.raises(CopyLimitExceededError) as exc_info:
+            pool.validate_deck(deck)
+
+        error = exc_info.value
+        assert error.card_name == "Lightning Bolt"
+        assert error.requested == 4
+        assert error.available == 2
+        assert "only 2 owned" in error.reason
+
+    def test_deck_with_unowned_card_fails(self) -> None:
+        """
+        Deck requesting unowned card raises CopyLimitExceededError.
+        """
+        pool = OwnedCardPool.from_dict({"Mountain": 20})
+
+        deck = {"Black Lotus": 1}  # Not owned at all
+
+        with pytest.raises(CopyLimitExceededError) as exc_info:
+            pool.validate_deck(deck)
+
+        error = exc_info.value
+        assert error.card_name == "Black Lotus"
+        assert error.available == 0
+        assert "not owned" in error.reason
+
+
+class TestDeckExceedsMaxCopies:
+    """
+    MANDATORY TEST: No deck exceeds max copies.
+    """
+
+    def test_deck_exceeds_max_copies_fails(self) -> None:
+        """
+        Deck requesting more than max copies raises CopyLimitExceededError.
+        """
+        pool = OwnedCardPool.from_dict({"Mountain": 20})
+
+        deck = {"Mountain": 5}  # Max is 4
+
+        with pytest.raises(CopyLimitExceededError) as exc_info:
+            pool.validate_deck(deck)
+
+        error = exc_info.value
+        assert error.card_name == "Mountain"
+        assert error.requested == 5
+        assert error.available == 4
+        assert "max 4 per deck" in error.reason
+
+    def test_deck_at_max_copies_succeeds(self) -> None:
+        """
+        Deck at exactly max copies succeeds.
+        """
+        pool = OwnedCardPool.from_dict({"Mountain": 20})
+
+        deck = {"Mountain": 4}  # Exactly at max
+
+        # Should not raise
+        pool.validate_deck(deck)
+
+
+class TestViolationsAreDeterministic:
+    """
+    MANDATORY TEST: Violations are deterministic failures.
+    """
+
+    def test_same_violation_produces_same_error(self) -> None:
+        """
+        Same violation produces identical error every time.
+        """
+        pool = OwnedCardPool.from_dict({"Lightning Bolt": 2})
+        deck = {"Lightning Bolt": 4}
+
+        errors = []
+        for _ in range(3):
+            try:
+                pool.validate_deck(deck)
+            except CopyLimitExceededError as e:
+                errors.append((e.card_name, e.requested, e.available, e.reason))
+
+        # All errors are identical
+        assert len(errors) == 3
+        assert all(e == errors[0] for e in errors)
+
+    def test_error_contains_full_context(self) -> None:
+        """
+        CopyLimitExceededError contains full context for debugging.
+        """
+        pool = OwnedCardPool.from_dict({"Lightning Bolt": 2})
+        deck = {"Lightning Bolt": 4}
+
+        with pytest.raises(CopyLimitExceededError) as exc_info:
+            pool.validate_deck(deck)
+
+        error = exc_info.value
+        # All context is present
+        assert hasattr(error, "card_name")
+        assert hasattr(error, "requested")
+        assert hasattr(error, "available")
+        assert hasattr(error, "reason")
+
+        # Error message is informative
+        message = str(error)
+        assert "Lightning Bolt" in message
+        assert "4" in message  # Requested
+        assert "2" in message  # Available
+
+
+class TestConsumeCopies:
+    """
+    Tests for consume_copies() method.
+    """
+
+    def test_consume_copies_returns_new_pool(self) -> None:
+        """
+        consume_copies() returns a new pool with remaining copies.
+        """
+        pool = OwnedCardPool.from_dict({"Lightning Bolt": 4, "Mountain": 20})
+        deck = {"Lightning Bolt": 4, "Mountain": 4}
+
+        remaining = pool.consume_copies(deck)
+
+        # Original unchanged
+        assert pool.get_count("Lightning Bolt") == 4
+        assert pool.get_count("Mountain") == 20
+
+        # New pool has remaining
+        assert remaining.get_count("Lightning Bolt") == 0  # All used
+        assert remaining.get_count("Mountain") == 16  # 20 - 4
+
+    def test_consume_copies_validates_first(self) -> None:
+        """
+        consume_copies() validates before consuming.
+        """
+        pool = OwnedCardPool.from_dict({"Lightning Bolt": 2})
+        deck = {"Lightning Bolt": 4}  # Too many
+
+        with pytest.raises(CopyLimitExceededError):
+            pool.consume_copies(deck)
+
+    def test_consume_removes_zero_count_cards(self) -> None:
+        """
+        Cards reduced to zero are removed from the pool.
+        """
+        pool = OwnedCardPool.from_dict({"Lightning Bolt": 4})
+        deck = {"Lightning Bolt": 4}
+
+        remaining = pool.consume_copies(deck)
+
+        # Card is no longer in pool
+        assert "Lightning Bolt" not in remaining
+        assert remaining.get_count("Lightning Bolt") == 0

@@ -51,7 +51,12 @@ from forgebreaker.models.legality_context import (
     check_legality,
     filter_by_legality,
 )
-from forgebreaker.models.owned_card_pool import OwnedCardPool, build_owned_pool
+from forgebreaker.models.owned_card_pool import (
+    DEFAULT_MAX_COPIES,
+    CopyLimitExceededError,
+    OwnedCardPool,
+    build_owned_pool,
+)
 from forgebreaker.models.validated_deck import (
     DeckValidationError,
     ValidatedDeck,
@@ -71,7 +76,9 @@ __all__ = [
     "ClarificationRequest",
     "ClarificationType",
     "Collection",
+    "CopyLimitExceededError",
     "DEFAULT_MAX_CLARIFICATIONS",
+    "DEFAULT_MAX_COPIES",
     "DeckDistance",
     "DeckValidationError",
     "FailureDetail",
