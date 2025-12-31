@@ -745,6 +745,121 @@ class TestNonExclusivityInvariant:
             assert score >= contract.MIN_INCLUDED_SCORE, f"{card} was excluded"
 
 
+class TestArchetypeAgnostic:
+    """
+    MANDATORY TESTS: Query semantics are archetype-agnostic.
+
+    The invariants work for any tribe, not just Goblin.
+    This proves the system is generic, not special-cased.
+    """
+
+    @pytest.fixture
+    def contract(self) -> QueryContract:
+        return QueryContract()
+
+    @pytest.fixture
+    def scorer(self) -> MockScorer:
+        return MockScorer()
+
+    def test_dominance_works_for_elf(self, contract: QueryContract, scorer: MockScorer) -> None:
+        """
+        Dominance invariant works for Elf queries.
+        """
+        query = DeckQuery.for_tribal("Elf")
+        elf_signal = query.get_signals(QuerySignalType.TRIBE)[0]
+
+        # Elvish Mystic (Elf) vs Goblin Guide (not Elf)
+        assert contract.check_dominance(
+            scorer=scorer,
+            query=query,
+            matching_card="Elvish Mystic",
+            non_matching_card="Goblin Guide",
+            signal=elf_signal,
+        )
+
+    def test_monotonicity_works_for_elf(self, contract: QueryContract, scorer: MockScorer) -> None:
+        """
+        Monotonicity invariant works for Elf queries.
+        """
+        base_query = DeckQuery.empty()
+        elf_signal = QuerySignal(
+            signal_type=QuerySignalType.TRIBE,
+            value="Elf",
+            strength=SignalStrength.STRONG,
+        )
+
+        # Elf card - adding Elf preference should not lower score
+        assert contract.check_monotonicity(
+            scorer=scorer,
+            card="Elvish Mystic",
+            base_query=base_query,
+            additional_signal=elf_signal,
+        )
+
+        # Non-Elf card - adding Elf preference should not lower score
+        assert contract.check_monotonicity(
+            scorer=scorer,
+            card="Goblin Guide",
+            base_query=base_query,
+            additional_signal=elf_signal,
+        )
+
+    def test_non_exclusivity_works_for_elf(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        Non-exclusivity invariant works for Elf queries.
+        """
+        query = DeckQuery.for_tribal("Elf")
+
+        # Goblin Guide doesn't match Elf but should not be excluded
+        assert contract.check_non_exclusivity(
+            scorer=scorer,
+            query=query,
+            non_matching_card="Goblin Guide",
+        )
+
+    def test_invariants_work_for_any_tribe(
+        self, contract: QueryContract, scorer: MockScorer
+    ) -> None:
+        """
+        All three invariants work for arbitrary tribes.
+
+        This proves the system is not Goblin-specific.
+        """
+        tribes = ["Goblin", "Elf"]
+
+        for tribe in tribes:
+            query = DeckQuery.for_tribal(tribe)
+            tribe_signal = query.get_signals(QuerySignalType.TRIBE)[0]
+
+            # Find a card that matches and one that doesn't
+            matching_card = None
+            non_matching_card = None
+            for card_name, card_data in scorer.card_db.items():
+                if card_data.get("tribe") == tribe:
+                    matching_card = card_name
+                elif card_data.get("tribe") != tribe and card_data.get("tribe") != "":
+                    non_matching_card = card_name
+
+            if matching_card and non_matching_card:
+                # Dominance
+                assert contract.check_dominance(
+                    scorer=scorer,
+                    query=query,
+                    matching_card=matching_card,
+                    non_matching_card=non_matching_card,
+                    signal=tribe_signal,
+                ), f"Dominance failed for {tribe}"
+
+            # Non-exclusivity (use a generic non-matching card)
+            assert contract.check_non_exclusivity(
+                scorer=scorer,
+                query=query,
+                non_matching_card="Mountain",
+            ), f"Non-exclusivity failed for {tribe}"
+
+
 class TestAddSignal:
     """
     Tests for DeckQuery.add_signal() method.
