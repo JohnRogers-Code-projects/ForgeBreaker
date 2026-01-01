@@ -23,7 +23,13 @@ from forgebreaker.models.canonical_card import (
     OwnedCard,
     ResolvedCard,
 )
-from forgebreaker.models.failure import FailureKind, KnownError
+from forgebreaker.models.failure import (
+    STANDARD_MESSAGES,
+    STANDARD_SUGGESTIONS,
+    FailureKind,
+    KnownError,
+    OutcomeType,
+)
 
 # =============================================================================
 # REASON CODES (not prose)
@@ -210,6 +216,14 @@ class CanonicalCardResolver:
                 # result is ResolutionEvent with failure reason
                 rejected_events.append(result)
 
+        # INVARIANT: Every consolidated card produces exactly one resolution record
+        # This is enforced by assertion - any violation is a bug, not user error
+        total_records = len(resolved_events) + len(rejected_events)
+        assert total_records == len(consolidated), (
+            f"Resolution completeness violated: {total_records} records "
+            f"for {len(consolidated)} consolidated cards"
+        )
+
         report = ResolutionReport(
             resolved=tuple(resolved_events),
             normalized=(),  # No normalization currently
@@ -317,17 +331,15 @@ class CanonicalCardResolver:
         result = self.resolve(inventory)
 
         if not result.all_resolved:
-            # Build detailed failure message using reason codes
+            # Build structured detail from reason codes (NOT prose)
             failed_names = result.report.get_rejected_names(5)
-            detail = f"Failed cards: {', '.join(failed_names)}"
-            if result.report.total_rejected > 5:
-                detail += f" (and {result.report.total_rejected - 5} more)"
+            detail = f"unresolved={result.report.total_rejected};names={','.join(failed_names)}"
 
             raise KnownError(
                 kind=FailureKind.VALIDATION_FAILED,
-                message="Collection import failed: some cards could not be resolved.",
+                message=STANDARD_MESSAGES[OutcomeType.KNOWN_FAILURE],
                 detail=detail,
-                suggestion="Check that card names match exactly. Re-export from Arena if needed.",
+                suggestion=STANDARD_SUGGESTIONS[OutcomeType.KNOWN_FAILURE],
                 status_code=400,
             )
 
@@ -353,16 +365,15 @@ class CanonicalCardResolver:
         result = self.resolve(inventory)
 
         if not result.all_resolved:
+            # Build structured detail from reason codes (NOT prose)
             failed_names = result.report.get_rejected_names(5)
-            detail = f"Failed cards: {', '.join(failed_names)}"
-            if result.report.total_rejected > 5:
-                detail += f" (and {result.report.total_rejected - 5} more)"
+            detail = f"unresolved={result.report.total_rejected};names={','.join(failed_names)}"
 
             raise KnownError(
                 kind=FailureKind.VALIDATION_FAILED,
-                message="Collection import failed: some cards could not be resolved.",
+                message=STANDARD_MESSAGES[OutcomeType.KNOWN_FAILURE],
                 detail=detail,
-                suggestion="Check that card names match exactly. Re-export from Arena if needed.",
+                suggestion=STANDARD_SUGGESTIONS[OutcomeType.KNOWN_FAILURE],
                 status_code=400,
             )
 

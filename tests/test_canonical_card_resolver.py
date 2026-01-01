@@ -528,8 +528,8 @@ class TestResolveOrFail:
         assert error.status_code == 400
         assert error.suggestion is not None
 
-    def test_error_message_truncates_long_lists(self, resolver: CanonicalCardResolver) -> None:
-        """Error message truncates when many cards fail."""
+    def test_error_detail_structured_format(self, resolver: CanonicalCardResolver) -> None:
+        """Error detail uses structured format with reason codes."""
         inventory = [
             InventoryCard(name=f"Fake Card {i}", set_code="XXX", count=1) for i in range(10)
         ]
@@ -537,10 +537,13 @@ class TestResolveOrFail:
         with pytest.raises(KnownError) as exc_info:
             resolver.resolve_or_fail(inventory)
 
-        # Should show first 5 + "and X more"
+        # Structured format: unresolved=N;names=card1,card2,...
         detail = exc_info.value.detail
         assert detail is not None
-        assert "and 5 more" in detail
+        assert "unresolved=10" in detail
+        assert "names=" in detail
+        # First 5 card names are included
+        assert "Fake Card 0" in detail
 
 
 class TestResolveWithReport:
@@ -630,3 +633,81 @@ class TestEndToEndResolution:
             "historic": "legal",
             "modern": "legal",
         }
+
+
+# =============================================================================
+# COMPLETENESS INVARIANT TESTS
+# =============================================================================
+
+
+class TestResolutionCompleteness:
+    """Tests for resolution completeness invariant.
+
+    INVARIANT: Every input card produces exactly one resolution record.
+    len(resolved) + len(rejected) == len(unique_input_cards)
+    """
+
+    def test_completeness_all_resolved(self, resolver: CanonicalCardResolver) -> None:
+        """Completeness holds when all cards resolve."""
+        inventory = [
+            InventoryCard(name="Lightning Bolt", set_code="STA", count=4),
+            InventoryCard(name="Mountain", set_code="DMU", count=20),
+            InventoryCard(name="Counterspell", set_code="STA", count=4),
+        ]
+        result = resolver.resolve(inventory)
+
+        # 3 unique cards -> 3 resolution records
+        total_records = result.report.total_resolved + result.report.total_rejected
+        assert total_records == 3
+
+    def test_completeness_all_rejected(self, resolver: CanonicalCardResolver) -> None:
+        """Completeness holds when all cards fail."""
+        inventory = [
+            InventoryCard(name="Fake Card 1", set_code="XXX", count=4),
+            InventoryCard(name="Fake Card 2", set_code="XXX", count=2),
+        ]
+        result = resolver.resolve(inventory)
+
+        # 2 unique cards -> 2 resolution records
+        total_records = result.report.total_resolved + result.report.total_rejected
+        assert total_records == 2
+
+    def test_completeness_mixed(self, resolver: CanonicalCardResolver) -> None:
+        """Completeness holds when some cards succeed and some fail."""
+        inventory = [
+            InventoryCard(name="Lightning Bolt", set_code="STA", count=4),
+            InventoryCard(name="Fake Card", set_code="XXX", count=2),
+            InventoryCard(name="Mountain", set_code="DMU", count=20),
+        ]
+        result = resolver.resolve(inventory)
+
+        # 3 unique cards -> 3 resolution records
+        total_records = result.report.total_resolved + result.report.total_rejected
+        assert total_records == 3
+        assert result.report.total_resolved == 2
+        assert result.report.total_rejected == 1
+
+    def test_completeness_with_consolidation(self, resolver: CanonicalCardResolver) -> None:
+        """Completeness accounts for consolidation (multiple printings -> 1 card)."""
+        inventory = [
+            # Lightning Bolt appears 3 times but consolidates to 1 unique card
+            InventoryCard(name="Lightning Bolt", set_code="STA", count=4),
+            InventoryCard(name="Lightning Bolt", set_code="DMU", count=3),
+            InventoryCard(name="Lightning Bolt", set_code="LEA", count=1),
+            # Mountain is separate
+            InventoryCard(name="Mountain", set_code="DMU", count=20),
+        ]
+        result = resolver.resolve(inventory)
+
+        # 2 unique cards (after consolidation) -> 2 resolution records
+        total_records = result.report.total_resolved + result.report.total_rejected
+        assert total_records == 2
+
+    def test_completeness_empty_input(self, resolver: CanonicalCardResolver) -> None:
+        """Completeness holds for empty input."""
+        inventory: list[InventoryCard] = []
+        result = resolver.resolve(inventory)
+
+        # 0 unique cards -> 0 resolution records
+        total_records = result.report.total_resolved + result.report.total_rejected
+        assert total_records == 0
