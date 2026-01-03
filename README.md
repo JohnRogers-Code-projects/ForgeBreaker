@@ -211,27 +211,53 @@ npm run dev
 
 ---
 
-## Security Model
+## Security Posture
 
-ForgeBreaker is a **portfolio demonstration project**, not a production service.
+ForgeBreaker assumes a **trusted environment**. This is a portfolio demonstration project, not a hardened production service.
 
-**What this project demonstrates:**
-- Clean API architecture with FastAPI
-- Domain modeling for a complex problem space
-- Test-driven development with high coverage
-- LLM integration via Claude API
+### Design Assumptions
 
-**What this project does NOT implement:**
-- Authentication or authorization
-- Secure user identity (browser UUIDs are used for session continuity, not security)
-- Data privacy guarantees
-- Multi-tenant isolation
+| Assumption | Rationale |
+|------------|-----------|
+| No authentication | Users are anonymous. There is no login, no accounts, no identity verification. This is intentional—the project demonstrates architecture, not auth flows. |
+| Trusted callers | The API assumes callers are not adversarial. Input validation exists for correctness, not security. |
+| Open CORS | The API accepts requests from any origin. This simplifies demo deployment. |
+| Browser UUIDs for sessions | User identifiers are client-generated UUIDs stored in localStorage. They provide session continuity, not security. Anyone with the UUID can access that session's data. |
 
-**CORS is intentionally open.** The API accepts requests from any origin. This is appropriate for a demo project where the goal is showcasing architecture, not protecting user data.
+### Rate Limiting and Budget Controls
 
-**User identifiers are browser-generated UUIDs.** They provide session continuity across page reloads, nothing more. Anyone with the UUID can access that "user's" data. This is acceptable because the only data stored is card collection lists with no real-world value.
+The rate limits and budget controls documented above exist for **cost safety**, not adversarial security.
 
-If you're evaluating this project for an interview: the security decisions here are intentional and appropriate for the demo context. Production deployment would require authentication, proper CORS configuration, and rate limiting—none of which are the focus of this demonstration.
+They prevent:
+- Accidental runaway LLM costs
+- A single user monopolizing API capacity
+- Unexpected bills from the Claude API
+
+They do **not** prevent:
+- Determined abuse (IP rotation bypasses per-IP limits)
+- Data exfiltration (there's nothing sensitive to exfiltrate)
+- Denial of service (the service can be overwhelmed)
+
+### What Production Would Require
+
+A real production deployment of this architecture would add:
+
+| Concern | Production Requirement |
+|---------|------------------------|
+| Authentication | OAuth2/OIDC, API keys, or session tokens tied to verified identities |
+| Authorization | Role-based access control, resource ownership checks |
+| CORS | Allowlist of permitted origins |
+| Rate limiting | Token bucket with sliding windows, tied to authenticated identity |
+| Input validation | Defense-in-depth against injection attacks |
+| Secrets management | Vault or cloud secrets manager, not environment variables |
+| Audit logging | Tamper-evident logs of security-relevant events |
+| Multi-tenancy | Strict data isolation between users |
+
+### Why This Is Acceptable Here
+
+The only user data stored is MTG card collection lists. This data has no real-world value and no privacy implications. The cost controls protect the API provider (me), not the users.
+
+If you're evaluating this project: the security decisions are intentional and documented. The architecture cleanly separates concerns, making it straightforward to add authentication and hardening in a production context.
 
 ---
 
