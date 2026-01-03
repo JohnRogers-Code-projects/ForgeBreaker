@@ -11,6 +11,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+.next/
 downloads/
 eggs/
 .eggs/
@@ -67,16 +68,37 @@ dmypy.json
 # ruff
 .ruff_cache/
 
-# IDE
+# IDE / Editor
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+*.iml
+.project
+.classpath
+.settings/
 
-# OS
+# OS / Temporary
 .DS_Store
 Thumbs.db
+desktop.ini
+*.tmp
+
+# Secrets / Local config (never commit)
+.env.local
+.env.*.local
+secrets.*
+config.local.*
+*.pem
+*.key
+*.crt
+
+# Logs / Dumps
+*.log
+*.out
+*.dump
+*.sql
 
 # Project specific
 files.zip
