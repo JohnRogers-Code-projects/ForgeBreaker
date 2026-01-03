@@ -1,53 +1,49 @@
 """
 Sample deck for demo mode.
 
-Provides a realistic Standard deck that demonstrates ForgeBreaker's
-assumption surfacing, fragility analysis, and stress testing capabilities.
+This sample deck is intentionally human-curated to provide a clear,
+representative example for first-time users. Demo decks prioritize
+clarity and analysis value over historical performance.
 
-The deck is chosen to have interesting assumptions to explore:
-- Mana curve assumptions (enough 1-2 drops for aggro)
-- Key card dependencies (what if Swiftspear is always answered?)
-- Interaction timing (can we deal with early blockers?)
+DESIGN PRINCIPLE: Sample data is intentionally minimal. Full card datasets
+are not bundled with the application. Large datasets like Scryfall's bulk
+card data (~100MB) are downloaded on-demand when needed for specific
+operations. The demo flow works entirely with this curated deck, which
+exercises all code paths (parsing, analysis, ML, MCP) without requiring
+external data.
 """
 
 from forgebreaker.models.deck import MetaDeck
 
-# Mono-Red Aggro - a classic archetype with clear assumptions
-# This deck has interesting fragility points:
-# - Heavily reliant on early creatures connecting
-# - Needs to close games quickly before stabilization
-# - Burn spells do double duty (removal + reach)
+# Curated Gruul sample deck for demo purposes
 SAMPLE_DECK = MetaDeck(
-    name="Sample: Mono-Red Aggro",
-    archetype="aggro",
+    name="Sample Deck",
+    archetype="midrange",
     format="standard",
     cards={
-        # Creatures (20)
-        "Monastery Swiftspear": 4,
-        "Slickshot Show-Off": 4,
-        "Heartfire Hero": 4,
-        "Cacophony Scamp": 4,
-        "Phoenix Chick": 4,
-        # Spells (20)
-        "Play with Fire": 4,
-        "Monstrous Rage": 4,
-        "Lightning Strike": 4,
-        "Kumano Faces Kakkazan": 4,
-        "Searing Spear": 4,
-        # Lands (20)
-        "Mountain": 20,
+        # Creatures
+        "Badgermole Cub": 2,
+        "Bristly Bill, Spine Sower": 2,
+        "Mossborn Hydra": 4,
+        "Earth Kingdom General": 4,
+        "Haru, Hidden Talent": 3,
+        "The Boulder, Ready to Rumble": 1,
+        # Spells
+        "Shock": 4,
+        "Burst Lightning": 4,
+        "Explosive Derailment": 4,
+        "Ride the Shoopuf": 2,
+        "Earthbender Ascension": 2,
+        "Sazh's Chocobo": 1,
+        "The Legend of Kyoshi": 3,
+        # Lands
+        "Forest": 14,
+        "Mountain": 10,
     },
-    sideboard={
-        "Rending Flame": 3,
-        "Nahiri's Warcrafting": 2,
-        "Obliterating Bolt": 2,
-        "End the Festivities": 4,
-        "Urabrask's Forge": 2,
-        "Screaming Nemesis": 2,
-    },
-    win_rate=0.52,
-    meta_share=0.08,
-    source_url="https://github.com/RogersJohn/ForgeBreaker",
+    sideboard={},
+    win_rate=None,
+    meta_share=None,
+    source_url=None,
 )
 
 
@@ -62,7 +58,7 @@ def get_sample_deck() -> MetaDeck:
         archetype=SAMPLE_DECK.archetype,
         format=SAMPLE_DECK.format,
         cards=SAMPLE_DECK.cards.copy(),
-        sideboard=SAMPLE_DECK.sideboard.copy(),
+        sideboard=SAMPLE_DECK.sideboard.copy() if SAMPLE_DECK.sideboard else {},
         win_rate=SAMPLE_DECK.win_rate,
         meta_share=SAMPLE_DECK.meta_share,
         source_url=SAMPLE_DECK.source_url,
